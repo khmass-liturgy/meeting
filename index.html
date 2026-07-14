@@ -220,6 +220,20 @@ td input{width:100%;border:none;padding:2px;background:transparent}
     </table>
     <p class="hint">잔액 = 이월금 + 수입 − 지출.  다음 달 이월금은 이번 달 잔액으로 자동 계산됩니다(직접 수정하면 그 값이 우선).</p>
   </div>
+  <div class="card">
+    <div class="row" style="justify-content:space-between">
+      <h2>💰 월회비 납부 현황 <span class="pill">월 5,000원</span></h2>
+      <div class="month-nav no-print">
+        <button class="btn btn-sm" onclick="duesYear(-1)">◀</button>
+        <b id="dues-year"></b>
+        <button class="btn btn-sm" onclick="duesYear(1)">▶</button>
+      </div>
+    </div>
+    <div style="overflow-x:auto;margin-top:10px">
+    <table id="dues-table"></table>
+    </div>
+    <p class="hint">입금 내역의 <b>내용에 단원 이름이 포함된 5,000원 단위 입금</b>(건당 60,000원 이하)을 회비로 자동 집계합니다. 간식후원처럼 5,000원 단위가 아니거나 연회비를 넘는 입금은 제외되며, 잘못 집계된 건은 회비 내역에서 내용을 수정하면 반영됩니다.</p>
+  </div>
 </section>
 
 <!-- ═══════ 단원관리 ═══════ -->
@@ -428,7 +442,7 @@ function addFinRow(){
 function updFin(i,k,v){
   const f = getFin(finYM);
   f.rows[i][k] = (k==='amt') ? Number(v||0) : v;
-  persist(); renderFinFoot();
+  persist(); renderFinFoot(); renderDues();
 }
 function delFinRow(i){ getFin(finYM).rows.splice(i,1); persist(); renderFinance(); }
 
@@ -483,33 +497,69 @@ function importFinanceExcel(input){
       const wb = XLSX.read(new Uint8Array(e.target.result), {type:'array', cellDates:true});
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
-      // 헤더 행 찾기
-      let hi = rows.findIndex(r => r.some(c=>String(c).includes('날짜')) && r.some(c=>String(c).includes('금액')));
-      if(hi < 0){ throw new Error('헤더(날짜/구분/내용/금액)를 찾지 못했습니다'); }
-      const H = rows[hi].map(c=>String(c));
-      const ci = {
-        date: H.findIndex(c=>c.includes('날짜')),
-        type: H.findIndex(c=>c.includes('구분')),
-        desc: H.findIndex(c=>c.includes('내용')||c.includes('항목')||c.includes('적요')),
-        amt:  H.findIndex(c=>c.includes('금액'))
-      };
-      const byYM = {};
-      let n = 0;
-      for(let i=hi+1;i<rows.length;i++){
-        const r = rows[i];
-        const date = excelDateToStr(r[ci.date]); if(!date) continue;
-        const amt = Number(String(r[ci.amt]).replace(/[,\s원]/g,'')) || 0;
-        let type = String(r[ci.type]||'').trim();
-        type = type.includes('지출') ? '지출' : '수입';
-        const ym = date.slice(0,7);
-        (byYM[ym] = byYM[ym] || []).push({date, type, desc:String(r[ci.desc]||'').trim(), amt});
-        n++;
+      const toNum = v => Number(String(v).replace(/[,\s원+]/g,'')) || 0;
+
+      // ① 카카오뱅크 거래내역 형식 감지 (거래일시/구분/거래금액/내용)
+      let hi = rows.findIndex(r => r.some(c=>String(c).includes('거래일시')) && r.some(c=>String(c).includes('거래금액')));
+      let byYM = {}, n = 0, firstCarry = null;
+      if(hi >= 0){
+        const H = rows[hi].map(c=>String(c));
+        const ci = {
+          date: H.findIndex(c=>c.includes('거래일시')),
+          type: H.findIndex(c=>c.trim()==='구분'),
+          amt:  H.findIndex(c=>c.includes('거래금액')),
+          bal:  H.findIndex(c=>c.includes('잔액')),
+          desc: H.findIndex(c=>c.includes('내용')),
+          memo: H.findIndex(c=>c.includes('메모'))
+        };
+        for(let i=hi+1;i<rows.length;i++){
+          const r = rows[i];
+          const dm = String(r[ci.date]||'').match(/(\d{4})[.\-\/](\d{1,2})[.\-\/](\d{1,2})/);
+          if(!dm) continue;
+          const date = dm[1]+'-'+dm[2].padStart(2,'0')+'-'+dm[3].padStart(2,'0');
+          const signed = toNum(r[ci.amt]);
+          if(!signed) continue;
+          const type = (String(r[ci.type]).includes('출금') || signed < 0) ? '지출' : '수입';
+          const memo = ci.memo>=0 ? String(r[ci.memo]||'').trim() : '';
+          const desc = String(r[ci.desc]||'').trim() + (memo?` (${memo})`:'');
+          const ym = date.slice(0,7);
+          (byYM[ym] = byYM[ym] || []).push({date, type, desc, amt:Math.abs(signed)});
+          // 첫 거래의 '거래 후 잔액 − 거래금액' = 조회 시작 시점 잔액 → 첫 달 이월금
+          if(firstCarry===null && ci.bal>=0){
+            const bal = toNum(r[ci.bal]);
+            if(bal) firstCarry = bal - signed;
+          }
+          n++;
+        }
+      } else {
+        // ② 기본 양식 (날짜/구분/내용/금액)
+        hi = rows.findIndex(r => r.some(c=>String(c).includes('날짜')) && r.some(c=>String(c).includes('금액')));
+        if(hi < 0) throw new Error('헤더를 찾지 못했습니다 (카카오뱅크 거래내역 또는 날짜/구분/내용/금액 양식)');
+        const H = rows[hi].map(c=>String(c));
+        const ci = {
+          date: H.findIndex(c=>c.includes('날짜')),
+          type: H.findIndex(c=>c.includes('구분')),
+          desc: H.findIndex(c=>c.includes('내용')||c.includes('항목')||c.includes('적요')),
+          amt:  H.findIndex(c=>c.includes('금액'))
+        };
+        for(let i=hi+1;i<rows.length;i++){
+          const r = rows[i];
+          const date = excelDateToStr(r[ci.date]); if(!date) continue;
+          const amt = toNum(r[ci.amt]);
+          const type = String(r[ci.type]||'').includes('지출') ? '지출' : '수입';
+          const ym = date.slice(0,7);
+          (byYM[ym] = byYM[ym] || []).push({date, type, desc:String(r[ci.desc]||'').trim(), amt:Math.abs(amt)});
+          n++;
+        }
       }
       if(!n) throw new Error('가져올 데이터 행이 없습니다');
-      Object.keys(byYM).forEach(ym => { getFin(ym).rows = byYM[ym]; });
-      finYM = Object.keys(byYM).sort().pop();
-      persist(); renderFinance();
-      st.textContent = `✅ ${n}건 가져옴 (${Object.keys(byYM).sort().join(', ')})`; st.style.color='var(--ok)';
+      const months = Object.keys(byYM).sort();
+      months.forEach(ym => { getFin(ym).rows = byYM[ym].sort((a,b)=>a.date<b.date?-1:1); });
+      if(firstCarry!==null) getFin(months[0]).carry = firstCarry;
+      finYM = months[months.length-1];
+      persist(); renderFinance(); renderDues();
+      st.textContent = `✅ ${n}건 가져옴 (${months[0]} ~ ${months[months.length-1]}${firstCarry!==null?`, 시작 이월금 ${comma(firstCarry)}원`:''})`;
+      st.style.color='var(--ok)';
     }catch(err){
       st.textContent = '❌ '+err.message; st.style.color='var(--bad)';
     }
@@ -530,7 +580,42 @@ function downloadFinanceTemplate(){
   XLSX.writeFile(wb, '전례단_회비_양식.xlsx');
 }
 
-/* ════════════════════════ 단원관리 ════════════════════════ */
+/* 월회비(5,000원) 납부 현황 */
+const DUES = 5000;
+let duesY = new Date().getFullYear();
+function duesYear(d){ duesY += d; renderDues(); }
+function renderDues(){
+  const el = document.getElementById('dues-table'); if(!el) return;
+  document.getElementById('dues-year').textContent = duesY+'년';
+  const names = [...new Set([...S.roster, ...S.members.map(m=>m.name)])];
+  if(!names.length){ el.innerHTML='<tr><td class="empty">단원 명단이 없습니다.</td></tr>'; return; }
+  // 해당 연도 수입 중 5,000원 배수 입금을 이름으로 매칭
+  const deposits = [];
+  Object.keys(S.finance).forEach(ym=>{
+    if(!ym.startsWith(String(duesY))) return;
+    (S.finance[ym].rows||[]).forEach(r=>{
+      if(r.type==='수입' && r.amt>0 && r.amt % DUES === 0 && r.amt <= DUES*12) deposits.push(r);
+    });
+  });
+  let head = '<tr><th>이름</th><th class="r">납부액</th><th class="c">개월수</th><th class="c">상태</th><th>매칭 내역</th></tr>';
+  let totalPaid = 0;
+  const body = names.map(name=>{
+    const mine = deposits.filter(r=>r.desc.includes(name));
+    const paid = mine.reduce((a,r)=>a+r.amt,0);
+    totalPaid += paid;
+    const months = paid / DUES;
+    const stat = months>=12 ? `<span style="color:var(--ok);font-weight:700">완납${months>12?` (+${months-12})`:''}</span>`
+      : months>0 ? months+'개월' : '<span style="color:var(--bad)">미납</span>';
+    const detail = mine.map(r=>`${r.date.slice(5)} ${comma(r.amt)}`).join(', ');
+    return `<tr><td class="att-name">${esc(name)}</td><td class="r">${comma(paid)}</td>
+      <td class="c">${months||''}</td><td class="c">${stat}</td>
+      <td style="font-size:12px;color:var(--muted)">${esc(detail)}</td></tr>`;
+  }).join('');
+  const foot = `<tr class="total-row"><td class="r">합계</td><td class="r">${comma(totalPaid)}</td><td class="c">${totalPaid/DUES}</td><td colspan="2"></td></tr>`;
+  el.innerHTML = head + body + foot;
+}
+
+
 function addMemberForm(){
   const g = id => document.getElementById(id);
   const name = g('mb-name').value.trim();
@@ -774,7 +859,7 @@ async function cloudSaveNow(){
 }
 
 /* ════════════════════════ 초기화 ════════════════════════ */
-function renderAll(){ renderMeetings(); renderSuggest(); renderFinance(); renderMembers(); renderAttend(); loadMeetingForm(); }
+function renderAll(){ renderMeetings(); renderSuggest(); renderFinance(); renderDues(); renderMembers(); renderAttend(); loadMeetingForm(); }
 
 restore();
 
