@@ -252,8 +252,10 @@ td input{width:100%;border:none;padding:2px;background:transparent}
   </div>
   <div class="card">
     <h2>📇 전례단원 명부 <span class="pill" id="mb-count"></span>
-      <button class="btn btn-sm no-print" style="margin-left:auto" onclick="exportMembersExcel()">엑셀 내보내기</button>
+      <label class="btn btn-sm no-print" style="margin-left:auto;cursor:pointer">엑셀 가져오기<input type="file" accept=".xlsx,.xls" style="display:none" onchange="importMembersExcel(this)"></label>
+      <button class="btn btn-sm no-print" onclick="exportMembersExcel()">엑셀 내보내기</button>
       <button class="btn btn-sm no-print" onclick="window.print()">🖨 인쇄</button>
+      <span class="status" id="mb-status"></span>
     </h2>
     <div style="overflow-x:auto">
     <table>
@@ -642,6 +644,53 @@ function renderMembers(){
     <tr>${cell(i,'name',m.name)}${cell(i,'bapt',m.bapt)}${cell(i,'feast',m.feast)}${cell(i,'phone',m.phone)}${cell(i,'addr',m.addr)}${cell(i,'note',m.note)}
     <td class="c no-print"><button class="btn btn-sm btn-danger" onclick="delMember(${i})">✕</button></td></tr>`).join('');
 }
+function importMembersExcel(input){
+  const file = input.files[0]; if(!file) return;
+  const st = document.getElementById('mb-status');
+  const rd = new FileReader();
+  rd.onload = e => {
+    try{
+      const wb = XLSX.read(new Uint8Array(e.target.result), {type:'array'});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+      const hi = rows.findIndex(r => r.some(c=>String(c).includes('이름')||String(c).includes('성명')));
+      if(hi<0) throw new Error('헤더(이름/성명)를 찾지 못했습니다');
+      const H = rows[hi].map(c=>String(c));
+      const ci = {
+        name:  H.findIndex(c=>c.includes('이름')||c.includes('성명')),
+        bapt:  H.findIndex(c=>c.includes('세례명')||c.includes('본명')),
+        feast: H.findIndex(c=>c.includes('축일')),
+        phone: H.findIndex(c=>c.includes('전화')||c.includes('연락처')),
+        addr:  H.findIndex(c=>c.includes('주소')),
+        note:  H.findIndex(c=>c.includes('기타')||c.includes('비고'))
+      };
+      let added=0, updated=0;
+      for(let i=hi+1;i<rows.length;i++){
+        const r = rows[i];
+        const name = String(r[ci.name]||'').trim(); if(!name) continue;
+        const v = k => ci[k]>=0 ? String(r[ci[k]]||'').replace(/\s+/g,' ').trim() : '';
+        const ex = S.members.find(m=>m.name===name);
+        if(ex){
+          if(v('bapt')) ex.bapt=v('bapt');
+          if(v('feast')) ex.feast=v('feast');
+          if(v('phone')) ex.phone=v('phone');
+          if(v('addr')) ex.addr=v('addr');
+          if(v('note')) ex.note=v('note');
+          updated++;
+        }else{
+          S.members.push({name, bapt:v('bapt'), feast:v('feast'), phone:v('phone'), addr:v('addr'), note:v('note')});
+          added++;
+        }
+        if(!S.roster.includes(name)) S.roster.push(name);
+      }
+      persist(); renderMembers(); renderAttend(); renderDues();
+      st.textContent = `✅ 추가 ${added}명, 갱신 ${updated}명`; st.style.color='var(--ok)';
+    }catch(err){ st.textContent='❌ '+err.message; st.style.color='var(--bad)'; }
+    input.value='';
+  };
+  rd.readAsArrayBuffer(file);
+}
+
 function exportMembersExcel(){
   const wb = XLSX.utils.book_new();
   const data = [['이름','세례명','축일','전화번호','집주소','기타'],
