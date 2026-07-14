@@ -902,6 +902,8 @@ async function cloudSaveNow(){
   sync.textContent = '저장 중...'; sync.style.color='#bbb';
   try{
     await fbDB.ref(FB_PATH).set(Object.assign({}, S, {savedAt:new Date().toISOString(), savedBy:firebase.auth().currentUser.email}));
+    // 시간표 앱이 읽어갈 수 있도록 이름 목록만 공개 노드에 게시 (개인정보 제외)
+    await fbDB.ref('jeonrye/publicRoster').set({ names: S.roster, updatedAt: new Date().toISOString() });
     sync.textContent = '✅ 자동 저장됨 '+new Date().toLocaleTimeString('ko-KR'); sync.style.color='#7fd694';
   }catch(e){
     sync.textContent = '❌ 저장 실패: '+(e.code==='PERMISSION_DENIED'?'권한 없음':e.message); sync.style.color='#f88';
