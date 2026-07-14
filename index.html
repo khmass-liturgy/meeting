@@ -761,6 +761,7 @@ function renderAttend(){
   head += '<th class="c att-sum">출석</th><th class="c no-print" style="width:50px">삭제</th></tr>';
   let body = S.roster.map(name=>{
     const rec = A[name] || {};
+    const bapt = (S.members.find(m=>m.name===name)||{}).bapt || '';
     let cnt = 0;
     let cells = '';
     for(let m=1;m<=12;m++){
@@ -768,7 +769,7 @@ function renderAttend(){
       if(v==='O') cnt++;
       cells += `<td class="c att-cell ${v==='O'?'att-O':v==='X'?'att-X':''}" onclick="attToggle('${esc(name)}',${m})">${v==='O'?'○':v==='X'?'✕':''}</td>`;
     }
-    return `<tr><td class="att-name">${esc(name)}</td>${cells}<td class="c att-sum">${cnt}</td>
+    return `<tr><td class="att-name">${esc(name)}${bapt?` <span style="font-size:11.5px;color:var(--muted)">${esc(bapt)}</span>`:''}</td>${cells}<td class="c att-sum">${cnt}</td>
       <td class="c no-print"><button class="btn btn-sm btn-danger" onclick="delRosterName('${esc(name)}')">✕</button></td></tr>`;
   }).join('');
   // 월별 출석 합계
