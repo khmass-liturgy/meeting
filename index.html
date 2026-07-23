@@ -819,6 +819,19 @@ function renderAttend(){
 }
 
 /* ════════════════════════ Firebase 저장/자동 동기화 ════════════════════════ */
+// 코드에 직접 심어둔 기본 설정 — 매번 붙여넣지 않아도 자동으로 연결됩니다.
+// (apiKey는 비밀번호가 아니라 프로젝트 식별용 값이라 코드에 있어도 안전합니다.
+//  실제 보안은 아래의 이메일/비밀번호 로그인과 Firebase 규칙이 담당합니다.)
+const DEFAULT_FB_CONFIG = {
+  apiKey: "AIzaSyB_XOy_6SqlWptnDRlX7oGESTyjqW2dN3A",
+  authDomain: "khmass-jeonrye.firebaseapp.com",
+  databaseURL: "https://khmass-jeonrye-default-rtdb.firebaseio.com",
+  projectId: "khmass-jeonrye",
+  storageBucket: "khmass-jeonrye.firebasestorage.app",
+  messagingSenderId: "498800750143",
+  appId: "1:498800750143:web:2d120177e6539b686b128a",
+  measurementId: "G-7YPREN50ZT"
+};
 let fbApp = null, fbDB = null, fbReady = false;
 let saveTimer = null, loadingFromCloud = false;
 
@@ -854,10 +867,12 @@ function fbSaveConfig(){
 }
 function initFirebase(){
   const raw = localStorage.getItem('jeonrye-fb-config');
-  if(!raw) return false;
+  let cfg;
+  try{ cfg = raw ? JSON.parse(raw) : DEFAULT_FB_CONFIG; }
+  catch(e){ cfg = DEFAULT_FB_CONFIG; }
+  if(!cfg || !cfg.apiKey) return false;
   if(typeof firebase === 'undefined'){ fbStatus('❌ Firebase 스크립트를 불러오지 못했습니다 (인터넷 확인)', false); return false; }
   try{
-    const cfg = JSON.parse(raw);
     if(!fbApp) fbApp = firebase.initializeApp(cfg);
     fbDB = firebase.database();
     fbReady = true;
