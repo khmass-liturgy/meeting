@@ -252,7 +252,11 @@ td input{width:100%;border:none;padding:2px;background:transparent}
   </div>
   <div class="card">
     <h2>📇 전례단원 명부 <span class="pill" id="mb-count"></span>
-      <label class="btn btn-sm no-print" style="margin-left:auto;cursor:pointer">엑셀 가져오기<input type="file" accept=".xlsx,.xls" style="display:none" onchange="importMembersExcel(this)"></label>
+      <span class="no-print" style="margin-left:auto;display:flex;gap:4px">
+        <button class="btn btn-sm" id="mb-sort-name" onclick="setMbSort('name')">이름순</button>
+        <button class="btn btn-sm" id="mb-sort-feast" onclick="setMbSort('feast')">축일순</button>
+      </span>
+      <label class="btn btn-sm no-print" style="cursor:pointer">엑셀 가져오기<input type="file" accept=".xlsx,.xls" style="display:none" onchange="importMembersExcel(this)"></label>
       <button class="btn btn-sm no-print" onclick="exportMembersExcel()">엑셀 내보내기</button>
       <button class="btn btn-sm no-print" onclick="window.print()">🖨 인쇄</button>
       <span class="status" id="mb-status"></span>
@@ -618,6 +622,19 @@ function renderDues(){
 }
 
 
+let mbSortMode = 'name'; // 'name' | 'feast'
+function parseFeast(f){
+  if(!f) return null;
+  const m = String(f).match(/(\d{1,2})\s*[\/.]\s*(\d{1,2})/);
+  if(!m) return null;
+  const mo = parseInt(m[1],10), d = parseInt(m[2],10);
+  if(mo<1||mo>12||d<1||d>31) return null;
+  return mo*100 + d;
+}
+function setMbSort(mode){
+  mbSortMode = mode;
+  renderMembers();
+}
 function addMemberForm(){
   const g = id => document.getElementById(id);
   const name = g('mb-name').value.trim();
@@ -638,11 +655,30 @@ function delMember(i){
 function renderMembers(){
   const tb = document.getElementById('mb-body');
   document.getElementById('mb-count').textContent = S.members.length+'명';
+  const nb = document.getElementById('mb-sort-name'), fb = document.getElementById('mb-sort-feast');
+  if(nb && fb){
+    nb.classList.toggle('btn-p', mbSortMode==='name');
+    fb.classList.toggle('btn-p', mbSortMode==='feast');
+  }
   if(!S.members.length){ tb.innerHTML='<tr><td colspan="7" class="empty">등록된 단원이 없습니다. 출석부 탭에서 명단을 가져오면 이름이 자동 등록됩니다.</td></tr>'; return; }
   const cell = (i,k,v) => `<td contenteditable onblur="updMember(${i},'${k}',this)">${esc(v)}</td>`;
-  tb.innerHTML = S.members.map((m,i)=>`
-    <tr>${cell(i,'name',m.name)}${cell(i,'bapt',m.bapt)}${cell(i,'feast',m.feast)}${cell(i,'phone',m.phone)}${cell(i,'addr',m.addr)}${cell(i,'note',m.note)}
-    <td class="c no-print"><button class="btn btn-sm btn-danger" onclick="delMember(${i})">✕</button></td></tr>`).join('');
+  const order = S.members.map((m,i)=>i);
+  if(mbSortMode==='feast'){
+    order.sort((a,b)=>{
+      const fa = parseFeast(S.members[a].feast), fb2 = parseFeast(S.members[b].feast);
+      if(fa===null && fb2===null) return S.members[a].name.localeCompare(S.members[b].name,'ko');
+      if(fa===null) return 1;
+      if(fb2===null) return -1;
+      return fa - fb2;
+    });
+  } else {
+    order.sort((a,b)=> S.members[a].name.localeCompare(S.members[b].name,'ko'));
+  }
+  tb.innerHTML = order.map(i=>{
+    const m = S.members[i];
+    return `<tr>${cell(i,'name',m.name)}${cell(i,'bapt',m.bapt)}${cell(i,'feast',m.feast)}${cell(i,'phone',m.phone)}${cell(i,'addr',m.addr)}${cell(i,'note',m.note)}
+    <td class="c no-print"><button class="btn btn-sm btn-danger" onclick="delMember(${i})">✕</button></td></tr>`;
+  }).join('');
 }
 function importMembersExcel(input){
   const file = input.files[0]; if(!file) return;
