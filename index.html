@@ -111,7 +111,7 @@ td input{width:100%;border:none;padding:2px;background:transparent}
     <span class="sub">매월 넷째 화요일 저녁미사 후 · 마테오방</span>
     <span class="next-meet" id="next-meet"></span>
   </div>
-  <nav>
+  <nav id="main-nav" style="display:none">
     <button class="on" data-tab="meeting" onclick="showTab('meeting')">회의내용</button>
     <button data-tab="suggest" onclick="showTab('suggest')">건의사항</button>
     <button data-tab="finance" onclick="showTab('finance')">회비관리</button>
@@ -139,6 +139,13 @@ td input{width:100%;border:none;padding:2px;background:transparent}
     <button class="btn btn-sm" onclick="fbLogout()">로그아웃</button>
   </div>
 </div>
+
+<div id="locked-msg" style="text-align:center;padding:70px 20px;color:#c9bfae">
+  <p style="font-size:16px;font-weight:700">🔒 로그인 후 이용할 수 있습니다</p>
+  <p style="font-size:13px;margin-top:8px;opacity:.8">단원 개인정보 보호를 위해 로그인해야 내용이 표시됩니다.</p>
+</div>
+
+<div id="app-content" style="display:none">
 
 <!-- ═══════ 회의내용 ═══════ -->
 <section class="tab on" id="tab-meeting">
@@ -287,6 +294,8 @@ td input{width:100%;border:none;padding:2px;background:transparent}
     <div class="att-wrap"><table id="att-table"></table></div>
   </div>
 </section>
+
+</div><!-- /#app-content -->
 
 </main>
 
@@ -860,13 +869,19 @@ function fbLogout(){ firebase.auth().signOut(); }
 function onAuthChange(user){
   const loginRow = document.getElementById('fb-login-row');
   const userRow  = document.getElementById('fb-user-row');
+  const nav = document.getElementById('main-nav');
+  const content = document.getElementById('app-content');
+  const locked = document.getElementById('locked-msg');
   if(user){
     loginRow.style.display='none'; userRow.style.display='flex';
     document.getElementById('fb-user').textContent = user.email;
+    nav.style.display='flex'; content.style.display='block'; locked.style.display='none';
+    renderAll();
     cloudLoad();
   }else{
     loginRow.style.display='flex'; userRow.style.display='none';
     document.getElementById('fb-sync').textContent='';
+    nav.style.display='none'; content.style.display='none'; locked.style.display='block';
   }
 }
 async function cloudLoad(){
@@ -942,10 +957,9 @@ restore();
 document.getElementById('meet-ym').value = ymNow();
 document.getElementById('meet-ym').addEventListener('change', loadMeetingForm);
 
-// Firebase 초기화 (설정이 저장돼 있으면 자동 연결 + 로그인 유지)
+// Firebase 초기화 (자동 연결 + 로그인 유지)
 initFirebase();
-
-renderAll();
+// 참고: 화면 렌더링은 로그인 확인 후 onAuthChange()에서 처리됩니다 (개인정보 보호)
 </script>
 </body>
 </html>
