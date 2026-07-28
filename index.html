@@ -243,6 +243,8 @@ td input{width:100%;border:none;padding:2px;background:transparent}
       <input type="text" id="mb-bapt" placeholder="세례명" style="width:110px">
       <input type="text" id="mb-feast" placeholder="축일 (예: 7/22)" style="width:110px">
       <input type="text" id="mb-phone" placeholder="전화번호" style="width:140px">
+      <input type="text" id="mb-duty" placeholder="담당 (예: 해설,독서)" style="width:130px">
+      <input type="text" id="mb-joined" placeholder="입단일 (예: 2008-01)" style="width:130px">
       <input type="text" id="mb-addr" placeholder="집주소" style="flex:1;min-width:160px">
       <input type="text" id="mb-note" placeholder="기타" style="width:120px">
       <button class="btn btn-p" onclick="addMemberForm()">등록</button>
@@ -253,6 +255,7 @@ td input{width:100%;border:none;padding:2px;background:transparent}
       <span class="no-print" style="margin-left:auto;display:flex;gap:4px">
         <button class="btn btn-sm" id="mb-sort-name" onclick="setMbSort('name')">이름순</button>
         <button class="btn btn-sm" id="mb-sort-feast" onclick="setMbSort('feast')">축일순</button>
+        <button class="btn btn-sm" id="mb-sort-joined" onclick="setMbSort('joined')">입단순</button>
       </span>
       <label class="btn btn-sm no-print" style="cursor:pointer">엑셀 가져오기<input type="file" accept=".xlsx,.xls" style="display:none" onchange="importMembersExcel(this)"></label>
       <button class="btn btn-sm no-print" onclick="exportMembersExcel()">엑셀 내보내기</button>
@@ -261,7 +264,7 @@ td input{width:100%;border:none;padding:2px;background:transparent}
     </h2>
     <div style="overflow-x:auto">
     <table>
-      <thead><tr><th>이름</th><th>세례명</th><th>축일</th><th>전화번호</th><th>집주소</th><th>기타</th><th class="c no-print" style="width:56px">삭제</th></tr></thead>
+      <thead><tr><th>이름</th><th>세례명</th><th>축일</th><th>전화번호</th><th>담당</th><th>입단일</th><th>집주소</th><th>기타</th><th class="c no-print" style="width:56px">삭제</th></tr></thead>
       <tbody id="mb-body"></tbody>
     </table>
     </div>
@@ -290,7 +293,16 @@ td input{width:100%;border:none;padding:2px;background:transparent}
         <button class="btn btn-sm" onclick="attYear(1)">▶</button>
       </div>
     </div>
-    <p class="hint" style="margin:4px 0 10px">각 달의 <b>넷째 화요일</b>이 회의일입니다. 칸을 누르면 <b class="att-O">○출석</b> → <b class="att-X">✕불참</b> → 빈칸 순으로 바뀝니다.</p>
+    <div class="row no-print" style="margin-bottom:8px">
+      <span style="font-size:13px;color:var(--muted)">정렬</span>
+      <select id="att-sort" onchange="setAttSort(this.value)" style="width:auto">
+        <option value="custom">사용자 지정 (직접 끌어서 순서 변경)</option>
+        <option value="joined">입단순</option>
+        <option value="name">가나다순</option>
+        <option value="feast">축일순</option>
+      </select>
+    </div>
+    <p class="hint" style="margin:4px 0 10px">각 달의 <b>넷째 화요일</b>이 회의일입니다. 칸을 누르면 <b class="att-O">○출석</b> → <b class="att-X">✕불참</b> → 빈칸 순으로 바뀝니다. <span id="att-drag-hint">'사용자 지정' 정렬에서는 이름 칸을 끌어서 순서를 바꿀 수 있습니다.</span></p>
     <div class="att-wrap"><table id="att-table"></table></div>
   </div>
 </section>
@@ -309,7 +321,7 @@ let S = {
   meetings: {},      // "YYYY-MM": {date, place, count, content, savedAt}
   suggestions: [],   // {id, date, who, text, done}
   finance: {},       // "YYYY-MM": {carry:null|number, rows:[{date,type:'수입'|'지출',desc,amt}]}
-  members: [],       // {name, bapt, feast, phone, addr, note}
+  members: [],       // {name, bapt, feast, phone, duty, joined, addr, note}
   attendance: {},    // "YYYY": { name: {1:'O'|'X'|'', ...12} }
   roster: []         // 출석부 이름 목록
 };
@@ -622,7 +634,7 @@ function renderDues(){
 }
 
 
-let mbSortMode = 'name'; // 'name' | 'feast'
+let mbSortMode = 'name'; // 'name' | 'feast' | 'joined'
 function parseFeast(f){
   if(!f) return null;
   const m = String(f).match(/(\d{1,2})\s*[\/.]\s*(\d{1,2})/);
@@ -641,8 +653,9 @@ function addMemberForm(){
   if(!name){ alert('이름을 입력하세요'); return; }
   if(S.members.some(m=>m.name===name)){ alert('이미 등록된 이름입니다'); return; }
   S.members.push({ name, bapt:g('mb-bapt').value.trim(), feast:g('mb-feast').value.trim(),
-    phone:g('mb-phone').value.trim(), addr:g('mb-addr').value.trim(), note:g('mb-note').value.trim() });
-  ['mb-name','mb-bapt','mb-feast','mb-phone','mb-addr','mb-note'].forEach(id=>g(id).value='');
+    phone:g('mb-phone').value.trim(), duty:g('mb-duty').value.trim(), joined:g('mb-joined').value.trim(),
+    addr:g('mb-addr').value.trim(), note:g('mb-note').value.trim() });
+  ['mb-name','mb-bapt','mb-feast','mb-phone','mb-duty','mb-joined','mb-addr','mb-note'].forEach(id=>g(id).value='');
   if(!S.roster.includes(name)) S.roster.push(name);
   persist(); renderMembers(); renderAttend();
 }
@@ -655,12 +668,13 @@ function delMember(i){
 function renderMembers(){
   const tb = document.getElementById('mb-body');
   document.getElementById('mb-count').textContent = S.members.length+'명';
-  const nb = document.getElementById('mb-sort-name'), fb = document.getElementById('mb-sort-feast');
-  if(nb && fb){
+  const nb = document.getElementById('mb-sort-name'), fb = document.getElementById('mb-sort-feast'), jb = document.getElementById('mb-sort-joined');
+  if(nb && fb && jb){
     nb.classList.toggle('btn-p', mbSortMode==='name');
     fb.classList.toggle('btn-p', mbSortMode==='feast');
+    jb.classList.toggle('btn-p', mbSortMode==='joined');
   }
-  if(!S.members.length){ tb.innerHTML='<tr><td colspan="7" class="empty">등록된 단원이 없습니다. 출석부 탭에서 명단을 가져오면 이름이 자동 등록됩니다.</td></tr>'; return; }
+  if(!S.members.length){ tb.innerHTML='<tr><td colspan="9" class="empty">등록된 단원이 없습니다. 출석부 탭에서 명단을 가져오면 이름이 자동 등록됩니다.</td></tr>'; return; }
   const cell = (i,k,v) => `<td contenteditable onblur="updMember(${i},'${k}',this)">${esc(v)}</td>`;
   const order = S.members.map((m,i)=>i);
   if(mbSortMode==='feast'){
@@ -671,12 +685,20 @@ function renderMembers(){
       if(fb2===null) return -1;
       return fa - fb2;
     });
+  } else if(mbSortMode==='joined'){
+    order.sort((a,b)=>{
+      const ja = (S.members[a].joined||'').trim(), jb2 = (S.members[b].joined||'').trim();
+      if(!ja && !jb2) return S.members[a].name.localeCompare(S.members[b].name,'ko');
+      if(!ja) return 1;
+      if(!jb2) return -1;
+      return ja < jb2 ? -1 : ja > jb2 ? 1 : S.members[a].name.localeCompare(S.members[b].name,'ko');
+    });
   } else {
     order.sort((a,b)=> S.members[a].name.localeCompare(S.members[b].name,'ko'));
   }
   tb.innerHTML = order.map(i=>{
     const m = S.members[i];
-    return `<tr>${cell(i,'name',m.name)}${cell(i,'bapt',m.bapt)}${cell(i,'feast',m.feast)}${cell(i,'phone',m.phone)}${cell(i,'addr',m.addr)}${cell(i,'note',m.note)}
+    return `<tr>${cell(i,'name',m.name)}${cell(i,'bapt',m.bapt)}${cell(i,'feast',m.feast)}${cell(i,'phone',m.phone)}${cell(i,'duty',m.duty)}${cell(i,'joined',m.joined)}${cell(i,'addr',m.addr)}${cell(i,'note',m.note)}
     <td class="c no-print"><button class="btn btn-sm btn-danger" onclick="delMember(${i})">✕</button></td></tr>`;
   }).join('');
 }
@@ -697,6 +719,8 @@ function importMembersExcel(input){
         bapt:  H.findIndex(c=>c.includes('세례명')||c.includes('본명')),
         feast: H.findIndex(c=>c.includes('축일')),
         phone: H.findIndex(c=>c.includes('전화')||c.includes('연락처')),
+        duty:  H.findIndex(c=>c.includes('담당')),
+        joined:H.findIndex(c=>c.includes('입단')),
         addr:  H.findIndex(c=>c.includes('주소')),
         note:  H.findIndex(c=>c.includes('기타')||c.includes('비고'))
       };
@@ -710,11 +734,13 @@ function importMembersExcel(input){
           if(v('bapt')) ex.bapt=v('bapt');
           if(v('feast')) ex.feast=v('feast');
           if(v('phone')) ex.phone=v('phone');
+          if(v('duty')) ex.duty=v('duty');
+          if(v('joined')) ex.joined=v('joined');
           if(v('addr')) ex.addr=v('addr');
           if(v('note')) ex.note=v('note');
           updated++;
         }else{
-          S.members.push({name, bapt:v('bapt'), feast:v('feast'), phone:v('phone'), addr:v('addr'), note:v('note')});
+          S.members.push({name, bapt:v('bapt'), feast:v('feast'), phone:v('phone'), duty:v('duty'), joined:v('joined'), addr:v('addr'), note:v('note')});
           added++;
         }
         if(!S.roster.includes(name)) S.roster.push(name);
@@ -729,10 +755,10 @@ function importMembersExcel(input){
 
 function exportMembersExcel(){
   const wb = XLSX.utils.book_new();
-  const data = [['이름','세례명','축일','전화번호','집주소','기타'],
-    ...S.members.map(m=>[m.name,m.bapt,m.feast,m.phone,m.addr,m.note])];
+  const data = [['이름','세례명','축일','전화번호','담당','입단일','집주소','기타'],
+    ...S.members.map(m=>[m.name,m.bapt,m.feast,m.phone,m.duty,m.joined,m.addr,m.note])];
   const ws = XLSX.utils.aoa_to_sheet(data);
-  ws['!cols'] = [{wch:10},{wch:12},{wch:10},{wch:15},{wch:30},{wch:14}];
+  ws['!cols'] = [{wch:10},{wch:12},{wch:10},{wch:15},{wch:14},{wch:12},{wch:30},{wch:14}];
   XLSX.utils.book_append_sheet(wb, ws, '전례단원');
   XLSX.writeFile(wb, '전례단원_명부.xlsx');
 }
@@ -752,7 +778,7 @@ async function fetchRoster(){
     let added = 0;
     names.forEach(n=>{
       if(!S.roster.includes(n)){ S.roster.push(n); added++; }
-      if(!S.members.some(mm=>mm.name===n)) S.members.push({name:n,bapt:'',feast:'',phone:'',addr:'',note:''});
+      if(!S.members.some(mm=>mm.name===n)) S.members.push({name:n,bapt:'',feast:'',phone:'',duty:'',joined:'',addr:'',note:''});
     });
     persist(); renderAttend(); renderMembers();
     st.textContent = `✅ ${names.length}명 확인, ${added}명 새로 추가`; st.style.color='var(--ok)';
@@ -765,13 +791,53 @@ function addRosterName(){
   const n = el.value.trim(); if(!n) return;
   if(S.roster.includes(n)){ alert('이미 있는 이름입니다'); return; }
   S.roster.push(n);
-  if(!S.members.some(m=>m.name===n)) S.members.push({name:n,bapt:'',feast:'',phone:'',addr:'',note:''});
+  if(!S.members.some(m=>m.name===n)) S.members.push({name:n,bapt:'',feast:'',phone:'',duty:'',joined:'',addr:'',note:''});
   el.value=''; persist(); renderAttend(); renderMembers();
 }
 function delRosterName(n){
   if(!confirm(n+' 단원을 출석부에서 삭제할까요? (출석 기록도 함께 삭제)')) return;
   S.roster = S.roster.filter(x=>x!==n);
   Object.values(S.attendance).forEach(y=>delete y[n]);
+  persist(); renderAttend();
+}
+let attSortMode = 'custom'; // 'custom' | 'joined' | 'name' | 'feast'
+function setAttSort(mode){ attSortMode = mode; renderAttend(); }
+function attSortedNames(){
+  const names = S.roster.slice();
+  if(attSortMode==='custom') return names;
+  const mOf = n => S.members.find(m=>m.name===n) || {};
+  if(attSortMode==='name'){
+    names.sort((a,b)=> a.localeCompare(b,'ko'));
+  } else if(attSortMode==='feast'){
+    names.sort((a,b)=>{
+      const fa = parseFeast(mOf(a).feast), fb = parseFeast(mOf(b).feast);
+      if(fa===null && fb===null) return a.localeCompare(b,'ko');
+      if(fa===null) return 1;
+      if(fb===null) return -1;
+      return fa - fb;
+    });
+  } else if(attSortMode==='joined'){
+    names.sort((a,b)=>{
+      const ja = (mOf(a).joined||'').trim(), jb = (mOf(b).joined||'').trim();
+      if(!ja && !jb) return a.localeCompare(b,'ko');
+      if(!ja) return 1;
+      if(!jb) return -1;
+      return ja < jb ? -1 : ja > jb ? 1 : a.localeCompare(b,'ko');
+    });
+  }
+  return names;
+}
+let attDragName = null;
+function attDragStart(e,name){ attDragName = name; e.dataTransfer.effectAllowed='move'; }
+function attDragOver(e){ if(attSortMode==='custom') e.preventDefault(); }
+function attDrop(e,targetName){
+  e.preventDefault();
+  if(attSortMode!=='custom' || !attDragName || attDragName===targetName) return;
+  const from = S.roster.indexOf(attDragName), to = S.roster.indexOf(targetName);
+  if(from<0 || to<0) return;
+  S.roster.splice(from,1);
+  S.roster.splice(to,0,attDragName);
+  attDragName = null;
   persist(); renderAttend();
 }
 function attYear(d){ attY += d; renderAttend(); }
@@ -795,7 +861,11 @@ function renderAttend(){
     head += `<th class="c" title="${fmtDate(t4)}">${m}월<br><span style="font-weight:400;font-size:11px">${t4.getDate()}일</span></th>`;
   }
   head += '<th class="c att-sum">출석</th><th class="c no-print" style="width:50px">삭제</th></tr>';
-  let body = S.roster.map(name=>{
+  const sortedNames = attSortedNames();
+  const draggable = attSortMode==='custom';
+  const dragHint = document.getElementById('att-drag-hint');
+  if(dragHint) dragHint.style.display = draggable ? 'inline' : 'none';
+  let body = sortedNames.map(name=>{
     const rec = A[name] || {};
     const bapt = (S.members.find(m=>m.name===name)||{}).bapt || '';
     let cnt = 0;
@@ -805,7 +875,8 @@ function renderAttend(){
       if(v==='O') cnt++;
       cells += `<td class="c att-cell ${v==='O'?'att-O':v==='X'?'att-X':''}" onclick="attToggle('${esc(name)}',${m})">${v==='O'?'○':v==='X'?'✕':''}</td>`;
     }
-    return `<tr><td class="att-name">${esc(name)}${bapt?` <span style="font-size:11.5px;color:var(--muted)">${esc(bapt)}</span>`:''}</td>${cells}<td class="c att-sum">${cnt}</td>
+    const dragAttrs = draggable ? ` draggable="true" ondragstart="attDragStart(event,'${esc(name)}')" ondragover="attDragOver(event)" ondrop="attDrop(event,'${esc(name)}')" style="cursor:grab"` : '';
+    return `<tr><td class="att-name"${dragAttrs}>${draggable?'⠿ ':''}${esc(name)}${bapt?` <span style="font-size:11.5px;color:var(--muted)">${esc(bapt)}</span>`:''}</td>${cells}<td class="c att-sum">${cnt}</td>
       <td class="c no-print"><button class="btn btn-sm btn-danger" onclick="delRosterName('${esc(name)}')">✕</button></td></tr>`;
   }).join('');
   // 월별 출석 합계
@@ -816,6 +887,8 @@ function renderAttend(){
   }
   sums += '<td></td><td class="no-print"></td></tr>';
   t.innerHTML = head + body + sums;
+  const sel = document.getElementById('att-sort');
+  if(sel) sel.value = attSortMode;
 }
 
 /* ════════════════════════ Firebase 저장/자동 동기화 ════════════════════════ */
