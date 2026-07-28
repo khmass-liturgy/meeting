@@ -860,7 +860,7 @@ function renderAttend(){
     const t4 = fourthTuesday(attY,m);
     head += `<th class="c" title="${fmtDate(t4)}">${m}월<br><span style="font-weight:400;font-size:11px">${t4.getDate()}일</span></th>`;
   }
-  head += '<th class="c att-sum">출석</th><th class="c no-print" style="width:50px">삭제</th></tr>';
+  head += '<th class="c att-sum">출석률</th><th class="c no-print" style="width:50px">삭제</th></tr>';
   const sortedNames = attSortedNames();
   const draggable = attSortMode==='custom';
   const dragHint = document.getElementById('att-drag-hint');
@@ -868,15 +868,20 @@ function renderAttend(){
   let body = sortedNames.map(name=>{
     const rec = A[name] || {};
     const bapt = (S.members.find(m=>m.name===name)||{}).bapt || '';
-    let cnt = 0;
+    let cnt = 0, recorded = 0;
     let cells = '';
     for(let m=1;m<=12;m++){
       const v = rec[m]||'';
       if(v==='O') cnt++;
+      if(v==='O'||v==='X') recorded++;
       cells += `<td class="c att-cell ${v==='O'?'att-O':v==='X'?'att-X':''}" onclick="attToggle('${esc(name)}',${m})">${v==='O'?'○':v==='X'?'✕':''}</td>`;
     }
+    const pct = recorded>0 ? Math.round(cnt/recorded*100) : null;
+    const sumTxt = recorded>0
+      ? `${cnt}/${recorded} <span style="font-weight:400;font-size:12px;color:var(--muted)">(${pct}%)</span>`
+      : `${cnt}`;
     const dragAttrs = draggable ? ` draggable="true" ondragstart="attDragStart(event,'${esc(name)}')" ondragover="attDragOver(event)" ondrop="attDrop(event,'${esc(name)}')" style="cursor:grab"` : '';
-    return `<tr><td class="att-name"${dragAttrs}>${draggable?'⠿ ':''}${esc(name)}${bapt?` <span style="font-size:11.5px;color:var(--muted)">${esc(bapt)}</span>`:''}</td>${cells}<td class="c att-sum">${cnt}</td>
+    return `<tr><td class="att-name"${dragAttrs}>${draggable?'⠿ ':''}${esc(name)}${bapt?` <span style="font-size:11.5px;color:var(--muted)">${esc(bapt)}</span>`:''}</td>${cells}<td class="c att-sum">${sumTxt}</td>
       <td class="c no-print"><button class="btn btn-sm btn-danger" onclick="delRosterName('${esc(name)}')">✕</button></td></tr>`;
   }).join('');
   // 월별 출석 합계
