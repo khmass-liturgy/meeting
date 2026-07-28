@@ -80,6 +80,9 @@ td input{width:100%;border:none;padding:2px;background:transparent}
 .att-O{color:var(--ok)}.att-X{color:var(--bad)}
 .att-name{width:1%;white-space:nowrap;font-weight:500}
 .att-sum{background:#FBF4E4;font-weight:700}
+.att-event{background:#F3EBDD}
+.att-date-input{width:120px;font-size:11px;padding:2px 4px}
+.att-date-print{display:none}
 
 /* 회의록 목록 */
 .meet-item{border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:10px;background:#fff}
@@ -95,6 +98,8 @@ td input{width:100%;border:none;padding:2px;background:transparent}
   body{background:#fff;font-size:12px}
   .card{border:none;padding:4px 0}
   .tab{display:none}.tab.on{display:block}
+  .att-date-input{display:none}
+  .att-date-print{display:inline}
   @page{size:A4 portrait;margin:14mm}
 }
 @media(max-width:640px){
@@ -323,7 +328,8 @@ let S = {
   finance: {},       // "YYYY-MM": {carry:null|number, rows:[{date,type:'수입'|'지출',desc,amt}]}
   members: [],       // {name, bapt, feast, phone, duty, joined, addr, note}
   attendance: {},    // "YYYY": { name: {1:'O'|'X'|'', ...12} }
-  roster: []         // 출석부 이름 목록
+  roster: [],        // 출석부 이름 목록
+  eventDates: {}      // { "YYYY": {easter:'YYYY-MM-DD', christmas:'YYYY-MM-DD'} }
 };
 
 let finYM  = ymNow();
@@ -841,6 +847,12 @@ function attDrop(e,targetName){
   persist(); renderAttend();
 }
 function attYear(d){ attY += d; renderAttend(); }
+function setEventDate(key, value){
+  const Y = String(attY);
+  if(!S.eventDates[Y]) S.eventDates[Y] = {};
+  S.eventDates[Y][key] = value;
+  persist(); renderAttend();
+}
 function attToggle(name,m){
   const Y = String(attY);
   if(!S.attendance[Y]) S.attendance[Y] = {};
@@ -855,11 +867,19 @@ function renderAttend(){
   const A = S.attendance[Y] || {};
   const t = document.getElementById('att-table');
   if(!S.roster.length){ t.innerHTML='<tr><td class="empty">명단이 없습니다. 위에서 깃허브 명단을 가져오거나 단원을 추가하세요.</td></tr>'; return; }
+  const ED = S.eventDates[Y] || {};
+  const EVENTS = [{key:'easter', label:'부활'}, {key:'christmas', label:'성탄'}];
   let head = '<tr><th class="att-name">이름</th>';
   for(let m=1;m<=12;m++){
     const t4 = fourthTuesday(attY,m);
     head += `<th class="c" title="${fmtDate(t4)}">${m}월<br><span style="font-weight:400;font-size:11px">${t4.getDate()}일</span></th>`;
   }
+  EVENTS.forEach(ev=>{
+    const dv = ED[ev.key] || '';
+    head += `<th class="c att-event">${ev.label}<br>
+      <input type="date" class="att-date-input" value="${esc(dv)}" onchange="setEventDate('${ev.key}',this.value)">
+      <span class="att-date-print">${esc(dv)}</span></th>`;
+  });
   head += '<th class="c att-sum">출석률</th><th class="c no-print" style="width:50px">삭제</th></tr>';
   const sortedNames = attSortedNames();
   const draggable = attSortMode==='custom';
@@ -876,6 +896,12 @@ function renderAttend(){
       if(v==='O'||v==='X') recorded++;
       cells += `<td class="c att-cell ${v==='O'?'att-O':v==='X'?'att-X':''}" onclick="attToggle('${esc(name)}',${m})">${v==='O'?'○':v==='X'?'✕':''}</td>`;
     }
+    EVENTS.forEach(ev=>{
+      const v = rec[ev.key]||'';
+      if(v==='O') cnt++;
+      if(v==='O'||v==='X') recorded++;
+      cells += `<td class="c att-cell att-event ${v==='O'?'att-O':v==='X'?'att-X':''}" onclick="attToggle('${esc(name)}','${ev.key}')">${v==='O'?'○':v==='X'?'✕':''}</td>`;
+    });
     const pct = recorded>0 ? Math.round(cnt/recorded*100) : null;
     const sumTxt = recorded>0
       ? `${cnt}/${recorded} <span style="font-weight:400;font-size:12px;color:var(--muted)">(${pct}%)</span>`
@@ -890,6 +916,10 @@ function renderAttend(){
     const c = S.roster.reduce((a,n)=>a+((A[n]?.[m]==='O')?1:0),0);
     sums += `<td class="c">${c||''}</td>`;
   }
+  EVENTS.forEach(ev=>{
+    const c = S.roster.reduce((a,n)=>a+((A[n]?.[ev.key]==='O')?1:0),0);
+    sums += `<td class="c">${c||''}</td>`;
+  });
   sums += '<td></td><td class="no-print"></td></tr>';
   t.innerHTML = head + body + sums;
   const sel = document.getElementById('att-sort');
@@ -971,12 +1001,13 @@ async function cloudLoad(){
     if(snap.exists()){
       const loaded = snap.val();
       loadingFromCloud = true;
-      ['meetings','suggestions','finance','members','attendance','roster'].forEach(k=>{
+      ['meetings','suggestions','finance','members','attendance','roster','eventDates'].forEach(k=>{
         if(loaded[k]!==undefined) S[k]=loaded[k];
       });
       // Firebase는 빈 배열/객체를 저장하지 않으므로 기본형 보정
       S.suggestions = S.suggestions||[]; S.members = S.members||[]; S.roster = S.roster||[];
       S.meetings = S.meetings||{}; S.finance = S.finance||{}; S.attendance = S.attendance||{};
+      S.eventDates = S.eventDates||{};
       Object.values(S.finance).forEach(f=>{ f.rows = f.rows||[]; });
       localStorage.setItem(LS_KEY, JSON.stringify(S));
       loadingFromCloud = false;
