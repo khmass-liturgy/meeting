@@ -7,7 +7,7 @@
 <!-- 아이콘 (십자가 문양, 데이터 URI — 별도 파일 불필요) -->
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%236E1E2B'/%3E%3Cpath d='M32 10v44M18 26h28' stroke='%23E9C46A' stroke-width='7' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%236E1E2B'/%3E%3Cpath d='M32 10v44M18 26h28' stroke='%23E9C46A' stroke-width='7' stroke-linecap='round'/%3E%3C/svg%3E">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
@@ -62,6 +62,9 @@ th{background:#F6F0E4;font-weight:700;color:#5c4a35;font-size:13px}
 td input{width:100%;border:none;padding:2px;background:transparent}
 .r{text-align:right}.c{text-align:center}
 .money-in{color:var(--ok);font-weight:600}.money-out{color:var(--bad);font-weight:600}
+.tbl-scroll{overflow-x:auto}
+.fin-bal{color:#5c4a35;font-variant-numeric:tabular-nums;background:#FCFAF5}
+.fin-bal.neg{color:var(--bad);font-weight:600}
 .total-row td{background:#FBF4E4;font-weight:700}
 .month-nav{display:flex;align-items:center;gap:10px}
 .month-nav b{font-family:'Noto Serif KR',serif;font-size:18px;color:var(--wine);min-width:120px;text-align:center}
@@ -73,6 +76,8 @@ td input{width:100%;border:none;padding:2px;background:transparent}
 #gistbar input{background:#241F1B;border-color:#4a4038;color:#EFE7D8;font-size:13px}
 #gistbar label{font-size:12.5px;display:flex;gap:5px;align-items:center}
 #gist-status{font-size:12.5px}
+#fb-conflict-row{background:#4A2E1E;border:1px solid #8a5a32;border-radius:8px;padding:8px 10px;margin-top:8px}
+#fb-conflict-msg{font-size:12.5px;color:#F5C451;flex:1;min-width:180px}
 
 /* 출석부 */
 .att-wrap{overflow-x:auto}
@@ -100,6 +105,7 @@ td input{width:100%;border:none;padding:2px;background:transparent}
   .tab{display:none}.tab.on{display:block}
   .att-date-input{display:none}
   .att-date-print{display:inline}
+  .tbl-scroll{overflow:visible!important}
   @page{size:A4 portrait;margin:14mm}
 }
 @media(max-width:640px){
@@ -142,6 +148,11 @@ td input{width:100%;border:none;padding:2px;background:transparent}
     <span id="fb-sync" style="font-size:12.5px;color:#7fd694"></span>
     <button class="btn btn-sm" style="margin-left:auto" onclick="cloudSaveNow()">지금 저장</button>
     <button class="btn btn-sm" onclick="fbLogout()">로그아웃</button>
+  </div>
+  <div class="row" id="fb-conflict-row" style="display:none">
+    <span id="fb-conflict-msg"></span>
+    <button class="btn btn-sm" onclick="conflictReload()">상대 내용 불러오기</button>
+    <button class="btn btn-sm btn-danger" onclick="conflictOverwrite()">내 내용으로 덮어쓰기</button>
   </div>
 </div>
 
@@ -216,12 +227,14 @@ td input{width:100%;border:none;padding:2px;background:transparent}
         <button class="btn btn-sm" onclick="addFinRow()">＋ 항목 추가</button>
       </div>
     </div>
-    <table style="margin-top:12px">
-      <thead><tr><th style="width:100px">날짜</th><th style="width:70px" class="c">구분</th><th>내용</th><th style="width:110px" class="r">금액</th><th style="width:50px" class="c no-print">삭제</th></tr></thead>
+    <div class="tbl-scroll" style="margin-top:12px">
+    <table>
+      <thead><tr><th style="width:100px">날짜</th><th style="width:70px" class="c">구분</th><th>내용</th><th style="width:110px" class="r">금액</th><th style="width:110px" class="r">잔액</th><th style="width:50px" class="c no-print">삭제</th></tr></thead>
       <tbody id="fin-body"></tbody>
       <tfoot id="fin-foot"></tfoot>
     </table>
-    <p class="hint">잔액 = 이월금 + 수입 − 지출.  다음 달 이월금은 이번 달 잔액으로 자동 계산됩니다(직접 수정하면 그 값이 우선).</p>
+    </div>
+    <p class="hint">잔액 열은 <b>이월금에서 시작해 위에서부터 한 줄씩 더하고 뺀 누적 잔액</b>입니다(통장과 같은 방식). 표에 보이는 순서대로 계산하므로 날짜를 뒤섞어 입력하면 순서도 그대로 반영됩니다. 다음 달 이월금은 이번 달 마지막 잔액으로 자동 계산됩니다(직접 수정하면 그 값이 우선).</p>
   </div>
   <div class="card">
     <div class="row" style="justify-content:space-between">
@@ -321,6 +334,7 @@ td input{width:100%;border:none;padding:2px;background:transparent}
 const LS_KEY = 'jeonrye-meeting-v1';
 const ROSTER_URL = 'https://raw.githubusercontent.com/khmass-liturgy/liturgy/main/index.html';
 const FB_PATH = 'jeonrye/data';   // Realtime Database 저장 경로
+const LITURGY_ROSTER_PATH = 'jeonrye/liturgyRoster'; // 시간표 앱이 게시하는 공개 명단(있으면 우선 사용)
 
 let S = {
   meetings: {},      // "YYYY-MM": {date, place, count, content, savedAt}
@@ -350,7 +364,16 @@ function fourthTuesday(y,m){ // m: 1~12
 }
 function fmtDate(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function comma(n){ return (n||0).toLocaleString('ko-KR'); }
-function esc(s){ return String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function esc(s){ return String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+/* 엑셀 모듈 로딩 확인 (CDN 차단·오프라인 시 조용히 실패하지 않도록) */
+function ensureXLSX(statusId){
+  if(typeof XLSX !== 'undefined') return true;
+  const msg = '❌ 엑셀 모듈을 불러오지 못했습니다. 인터넷 연결을 확인한 뒤 새로고침하세요.';
+  const st = statusId && document.getElementById(statusId);
+  if(st){ st.textContent = msg; st.style.color='var(--bad)'; } else { alert(msg); }
+  return false;
+}
 
 /* ════════════════════════ 탭 ════════════════════════ */
 function showTab(id){
@@ -466,7 +489,26 @@ function addFinRow(){
 function updFin(i,k,v){
   const f = getFin(finYM);
   f.rows[i][k] = (k==='amt') ? Number(v||0) : v;
-  persist(); renderFinFoot(); renderDues();
+  persist(); renderFinBalances(); renderDues();
+}
+/* 이월금에서 시작해 표에 보이는 순서대로 누적한 줄별 잔액 */
+function finRunningBalances(){
+  const rows = (S.finance[finYM] || {}).rows || [];
+  let bal = carryOf(finYM);
+  return rows.map(r=>{
+    bal += (r.type==='지출' ? -1 : 1) * Number(r.amt||0);
+    return bal;
+  });
+}
+/* 금액·구분이 바뀌면 그 아래 잔액이 전부 달라진다.
+   입력칸을 다시 만들면 포커스를 뺏으므로 잔액 칸만 갱신한다. */
+function renderFinBalances(){
+  const bals = finRunningBalances();
+  document.querySelectorAll('#fin-body td.fin-bal').forEach((td,i)=>{
+    td.textContent = comma(bals[i]);
+    td.classList.toggle('neg', bals[i] < 0);
+  });
+  renderFinFoot();
 }
 function delFinRow(i){ getFin(finYM).rows.splice(i,1); persist(); renderFinance(); }
 
@@ -477,8 +519,9 @@ function renderFinance(){
   document.getElementById('fin-carry').value = (f.carry ?? carryOf(finYM));
   const tb = document.getElementById('fin-body');
   if(!f.rows.length){
-    tb.innerHTML = '<tr><td colspan="5" class="empty">내역이 없습니다. 엑셀 업로드 또는 ＋ 항목 추가</td></tr>';
+    tb.innerHTML = '<tr><td colspan="6" class="empty">내역이 없습니다. 엑셀 업로드 또는 ＋ 항목 추가</td></tr>';
   } else {
+    const bals = finRunningBalances();
     tb.innerHTML = f.rows.map((r,i)=>`
       <tr>
         <td><input type="date" value="${esc(r.date)}" onchange="updFin(${i},'date',this.value)"></td>
@@ -486,6 +529,7 @@ function renderFinance(){
           <option ${r.type==='수입'?'selected':''}>수입</option><option ${r.type==='지출'?'selected':''}>지출</option></select></td>
         <td><input value="${esc(r.desc)}" onchange="updFin(${i},'desc',this.value)"></td>
         <td class="r"><input type="number" value="${r.amt}" style="text-align:right" onchange="updFin(${i},'amt',this.value)"></td>
+        <td class="r fin-bal${bals[i]<0?' neg':''}">${comma(bals[i])}</td>
         <td class="c no-print"><button class="btn btn-sm btn-danger" onclick="delFinRow(${i})">✕</button></td>
       </tr>`).join('');
   }
@@ -497,10 +541,10 @@ function renderFinFoot(){
   const out = f.rows.filter(r=>r.type==='지출').reduce((a,r)=>a+Number(r.amt||0),0);
   const carry = carryOf(finYM), bal = carry + inc - out;
   document.getElementById('fin-foot').innerHTML = `
-    <tr class="total-row"><td colspan="3" class="r">이월금</td><td class="r">${comma(carry)}</td><td class="no-print"></td></tr>
-    <tr class="total-row"><td colspan="3" class="r">수입 합계</td><td class="r money-in">＋${comma(inc)}</td><td class="no-print"></td></tr>
-    <tr class="total-row"><td colspan="3" class="r">지출 합계</td><td class="r money-out">−${comma(out)}</td><td class="no-print"></td></tr>
-    <tr class="total-row"><td colspan="3" class="r" style="color:var(--wine)">잔액</td><td class="r" style="color:var(--wine)">${comma(bal)}</td><td class="no-print"></td></tr>`;
+    <tr class="total-row"><td colspan="3" class="r">이월금</td><td class="r">${comma(carry)}</td><td class="fin-bal"></td><td class="no-print"></td></tr>
+    <tr class="total-row"><td colspan="3" class="r">수입 합계</td><td class="r money-in">＋${comma(inc)}</td><td class="fin-bal"></td><td class="no-print"></td></tr>
+    <tr class="total-row"><td colspan="3" class="r">지출 합계</td><td class="r money-out">−${comma(out)}</td><td class="fin-bal"></td><td class="no-print"></td></tr>
+    <tr class="total-row"><td colspan="4" class="r" style="color:var(--wine)">잔액</td><td class="r fin-bal" style="color:${bal<0?'var(--bad)':'var(--wine)'};font-weight:700">${comma(bal)}</td><td class="no-print"></td></tr>`;
 }
 
 /* 엑셀 업로드/양식 */
@@ -514,6 +558,7 @@ function excelDateToStr(v){
 }
 function importFinanceExcel(input){
   const file = input.files[0]; if(!file) return;
+  if(!ensureXLSX('fin-status')){ input.value=''; return; }
   const st = document.getElementById('fin-status');
   const rd = new FileReader();
   rd.onload = e => {
@@ -592,6 +637,7 @@ function importFinanceExcel(input){
   rd.readAsArrayBuffer(file);
 }
 function downloadFinanceTemplate(){
+  if(!ensureXLSX('fin-status')) return;
   const wb = XLSX.utils.book_new();
   const data = [
     ['날짜','구분','내용','금액'],
@@ -611,32 +657,58 @@ function duesYear(d){ duesY += d; renderDues(); }
 function renderDues(){
   const el = document.getElementById('dues-table'); if(!el) return;
   document.getElementById('dues-year').textContent = duesY+'년';
-  const names = [...new Set([...S.roster, ...S.members.map(m=>m.name)])];
+  const names = [...new Set([...S.roster, ...S.members.map(m=>m.name)])].filter(Boolean);
   if(!names.length){ el.innerHTML='<tr><td class="empty">단원 명단이 없습니다.</td></tr>'; return; }
   // 해당 연도 수입 중 5,000원 배수 입금을 이름으로 매칭
   const deposits = [];
   Object.keys(S.finance).forEach(ym=>{
     if(!ym.startsWith(String(duesY))) return;
-    (S.finance[ym].rows||[]).forEach(r=>{
+    ((S.finance[ym]||{}).rows||[]).forEach(r=>{
       if(r.type==='수입' && r.amt>0 && r.amt % DUES === 0 && r.amt <= DUES*12) deposits.push(r);
     });
   });
+  /* 입금 1건은 한 명에게만 배정한다. 단순 포함(includes)이면 '김민'이
+     "김민수 회비"까지 가져가 이중 집계된다.
+       - 다른 후보에 포함되는 이름은 버린다 ('김민' ⊂ '김민수' → 김민수)
+       - 그러고도 서로 다른 이름이 둘 이상 남으면 (예: "김민 이영희 합산")
+         누구 것인지 알 수 없으므로 배정하지 않고 아래에 따로 보여준다. */
+  const flat = s => String(s==null?'':s).replace(/\s+/g,'');
+  const cand = names.map(n=>({name:n, key:flat(n)})).filter(c=>c.key);
+  const byName = {}, ambiguous = [], unmatched = [];
+  deposits.forEach(r=>{
+    const d = flat(r.desc);
+    const hits = cand.filter(c=>d.includes(c.key));
+    if(!hits.length){ unmatched.push(r); return; }
+    const top = hits.filter(c=>!hits.some(o=>o!==c && o.key.length>c.key.length && o.key.includes(c.key)));
+    if(top.length>1){ ambiguous.push({row:r, who:top.map(c=>c.name)}); return; }
+    (byName[top[0].name] = byName[top[0].name] || []).push(r);
+  });
+  const md = r => String(r.date||'').slice(5);
   let head = '<tr><th>이름</th><th class="r">납부액</th><th class="c">개월수</th><th class="c">상태</th><th>매칭 내역</th></tr>';
   let totalPaid = 0;
   const body = names.map(name=>{
-    const mine = deposits.filter(r=>r.desc.includes(name));
+    const mine = byName[name] || [];
     const paid = mine.reduce((a,r)=>a+r.amt,0);
     totalPaid += paid;
     const months = paid / DUES;
     const stat = months>=12 ? `<span style="color:var(--ok);font-weight:700">완납${months>12?` (+${months-12})`:''}</span>`
       : months>0 ? months+'개월' : '<span style="color:var(--bad)">미납</span>';
-    const detail = mine.map(r=>`${r.date.slice(5)} ${comma(r.amt)}`).join(', ');
+    const detail = mine.map(r=>`${md(r)} ${comma(r.amt)}`).join(', ');
     return `<tr><td class="att-name">${esc(name)}</td><td class="r">${comma(paid)}</td>
       <td class="c">${months||''}</td><td class="c">${stat}</td>
       <td style="font-size:12px;color:var(--muted)">${esc(detail)}</td></tr>`;
   }).join('');
   const foot = `<tr class="total-row"><td class="r">합계</td><td class="r">${comma(totalPaid)}</td><td class="c">${totalPaid/DUES}</td><td colspan="2"></td></tr>`;
-  el.innerHTML = head + body + foot;
+  let extra = '';
+  if(ambiguous.length){
+    const txt = ambiguous.map(a=>`${md(a.row)} ${comma(a.row.amt)}원 → ${a.who.join(' / ')}`).join(', ');
+    extra += `<tr><td colspan="5" style="font-size:12px;color:var(--bad);background:#FDF4F1">⚠ 이름이 겹쳐 배정하지 못한 입금 ${ambiguous.length}건: ${esc(txt)} — 회비 내역에서 내용을 구체적으로 고치면 반영됩니다.</td></tr>`;
+  }
+  if(unmatched.length){
+    const txt = unmatched.map(r=>`${md(r)} ${comma(r.amt)}원 ${r.desc}`).join(', ');
+    extra += `<tr><td colspan="5" style="font-size:12px;color:var(--muted)">이름이 확인되지 않은 5,000원 단위 입금 ${unmatched.length}건: ${esc(txt)}</td></tr>`;
+  }
+  el.innerHTML = head + body + foot + extra;
 }
 
 
@@ -666,10 +738,30 @@ function addMemberForm(){
   persist(); renderMembers(); renderAttend();
 }
 function updMember(i,k,el){ S.members[i][k] = el.textContent.trim(); persist(); }
+/* 단원 삭제는 반드시 이 함수 하나만 거친다.
+   members / roster / attendance 세 곳을 함께 정리해야 명단이 어긋나지 않는다. */
+function removeMemberEverywhere(name){
+  name = String(name||'').trim();
+  if(!name) return false;
+  const parts = [];
+  if(S.members.some(m=>m.name===name)) parts.push('명부');
+  if(S.roster.includes(name)) parts.push('출석부 명단');
+  const attYears = Object.keys(S.attendance).filter(y=>S.attendance[y] && S.attendance[y][name]);
+  if(attYears.length) parts.push('출석 기록('+attYears.sort().join(', ')+')');
+  if(!parts.length){ alert(name+' 단원을 찾지 못했습니다.'); return false; }
+  const msg = name+' 단원을 삭제할까요?'
+    + '\n\n삭제 대상: '+parts.join(' / ')
+    + '\n되돌릴 수 없습니다.';
+  if(!confirm(msg)) return false;
+  S.members = S.members.filter(m=>m.name!==name);
+  S.roster  = S.roster.filter(x=>x!==name);
+  Object.keys(S.attendance).forEach(y=>{ if(S.attendance[y]) delete S.attendance[y][name]; });
+  persist(); renderMembers(); renderAttend(); renderDues();
+  return true;
+}
 function delMember(i){
-  const name = S.members[i].name;
-  if(!confirm(name+' 단원을 명부에서 삭제할까요?')) return;
-  S.members.splice(i,1); persist(); renderMembers();
+  const m = S.members[i];
+  if(m) removeMemberEverywhere(m.name);
 }
 function renderMembers(){
   const tb = document.getElementById('mb-body');
@@ -710,6 +802,7 @@ function renderMembers(){
 }
 function importMembersExcel(input){
   const file = input.files[0]; if(!file) return;
+  if(!ensureXLSX('mb-status')){ input.value=''; return; }
   const st = document.getElementById('mb-status');
   const rd = new FileReader();
   rd.onload = e => {
@@ -760,6 +853,7 @@ function importMembersExcel(input){
 }
 
 function exportMembersExcel(){
+  if(!ensureXLSX('mb-status')) return;
   const wb = XLSX.utils.book_new();
   const data = [['이름','세례명','축일','전화번호','담당','입단일','집주소','기타'],
     ...S.members.map(m=>[m.name,m.bapt,m.feast,m.phone,m.duty,m.joined,m.addr,m.note])];
@@ -770,24 +864,66 @@ function exportMembersExcel(){
 }
 
 /* ════════════════════════ 출석부 ════════════════════════ */
+/* 시간표 앱 HTML에서 명단을 뽑아내는 예비 경로.
+   정규식 스크래핑은 상대 코드가 바뀌면 깨지므로 여러 형태를 받아주고,
+   이름처럼 보이지 않는 값(코드 조각·키 이름)은 걸러낸다. */
+function parseRosterNames(html){
+  const out = [];
+  const push = v => {
+    const s = String(v==null?'':v).replace(/\s+/g,' ').trim();
+    if(!s || s.length>20) return;
+    if(/[<>{}\[\]()=;:'"\\\/]/.test(s)) return;
+    if(!/[가-힣A-Za-z]/.test(s)) return;
+    if(out.indexOf(s)<0) out.push(s);
+  };
+  const m = html.match(/(?:(?:let|const|var)\s+members\s*=|["']members["']\s*:)\s*(\[[\s\S]*?\])\s*[;,\n]/);
+  if(!m) return out;
+  const block = m[1];
+  try{
+    const arr = JSON.parse(block.replace(/'/g,'"').replace(/,\s*([\]}])/g,'$1'));
+    if(Array.isArray(arr)){
+      arr.forEach(v=>push(typeof v==='string' ? v : (v && (v.name || v['이름']))));
+      if(out.length) return out;
+    }
+  }catch(e){ /* 표준 JSON이 아니면 아래 정규식으로 재시도 */ }
+  if(block.indexOf('{')>=0){
+    [...block.matchAll(/(?:name|이름)\s*:\s*['"]([^'"\n]+)['"]/g)].forEach(x=>push(x[1]));
+    if(out.length) return out;
+  }
+  [...block.matchAll(/['"]([^'"\n]+)['"]/g)].forEach(x=>push(x[1]));
+  return out;
+}
 async function fetchRoster(){
   const st = document.getElementById('att-status');
   st.textContent = '불러오는 중...'; st.style.color='var(--muted)';
   try{
-    const res = await fetch(ROSTER_URL, {cache:'no-store'});
-    if(!res.ok) throw new Error('HTTP '+res.status);
-    const html = await res.text();
-    const m = html.match(/let\s+members\s*=\s*\[([\s\S]*?)\]/);
-    if(!m) throw new Error('명단(members)을 찾지 못했습니다');
-    const names = [...m[1].matchAll(/'([^']+)'/g)].map(x=>x[1]);
-    if(!names.length) throw new Error('명단이 비어 있습니다');
+    let names = [], src = '';
+    // (1) 시간표 앱이 게시한 Firebase 공개 명단 - 상대 코드 구조와 무관하다
+    if(fbDB && firebase.auth().currentUser){
+      try{
+        const snap = await fbDB.ref(LITURGY_ROSTER_PATH+'/names').get();
+        if(snap.exists()){
+          const v = snap.val();
+          names = (Array.isArray(v) ? v : Object.values(v||{})).map(x=>String(x==null?'':x).trim()).filter(Boolean);
+          if(names.length) src = 'Firebase 공개 명단';
+        }
+      }catch(e){ /* 노드가 없거나 권한이 없으면 (2)로 넘어간다 */ }
+    }
+    // (2) 예비 경로: 시간표 앱 HTML에서 추출
+    if(!names.length){
+      const res = await fetch(ROSTER_URL, {cache:'no-store'});
+      if(!res.ok) throw new Error('HTTP '+res.status);
+      names = parseRosterNames(await res.text());
+      src = '깃허브 시간표 앱';
+      if(!names.length) throw new Error('명단(members)을 찾지 못했습니다. 시간표 앱 구조가 바뀌었을 수 있습니다.');
+    }
     let added = 0;
     names.forEach(n=>{
       if(!S.roster.includes(n)){ S.roster.push(n); added++; }
       if(!S.members.some(mm=>mm.name===n)) S.members.push({name:n,bapt:'',feast:'',phone:'',duty:'',joined:'',addr:'',note:''});
     });
-    persist(); renderAttend(); renderMembers();
-    st.textContent = `✅ ${names.length}명 확인, ${added}명 새로 추가`; st.style.color='var(--ok)';
+    persist(); renderAttend(); renderMembers(); renderDues();
+    st.textContent = `✅ ${src}에서 ${names.length}명 확인, ${added}명 새로 추가`; st.style.color='var(--ok)';
   }catch(e){
     st.textContent = '❌ '+e.message; st.style.color='var(--bad)';
   }
@@ -800,12 +936,7 @@ function addRosterName(){
   if(!S.members.some(m=>m.name===n)) S.members.push({name:n,bapt:'',feast:'',phone:'',duty:'',joined:'',addr:'',note:''});
   el.value=''; persist(); renderAttend(); renderMembers();
 }
-function delRosterName(n){
-  if(!confirm(n+' 단원을 출석부에서 삭제할까요? (출석 기록도 함께 삭제)')) return;
-  S.roster = S.roster.filter(x=>x!==n);
-  Object.values(S.attendance).forEach(y=>delete y[n]);
-  persist(); renderAttend();
-}
+function delRosterName(n){ removeMemberEverywhere(n); }
 let attSortMode = 'custom'; // 'custom' | 'joined' | 'name' | 'feast'
 function setAttSort(mode){ attSortMode = mode; renderAttend(); }
 function attSortedNames(){
@@ -834,8 +965,32 @@ function attSortedNames(){
   return names;
 }
 let attDragName = null;
-function attDragStart(e,name){ attDragName = name; e.dataTransfer.effectAllowed='move'; }
-function attDragOver(e){ if(attSortMode==='custom') e.preventDefault(); }
+/* 출석부 표는 매번 innerHTML로 다시 그리므로, 표 요소 자체에 위임 리스너를 한 번만 건다. */
+function bindAttendEvents(){
+  const t = document.getElementById('att-table');
+  if(!t || t.dataset.bound) return;
+  t.dataset.bound = '1';
+  t.addEventListener('click', e=>{
+    const row = e.target.closest('tr[data-name]'); if(!row) return;
+    const name = row.dataset.name;
+    if(e.target.closest('button[data-act="del"]')){ delRosterName(name); return; }
+    const cell = e.target.closest('td.att-cell');
+    if(cell && cell.dataset.k) attToggle(name, cell.dataset.k);
+  });
+  t.addEventListener('dragstart', e=>{
+    const td = e.target.closest('td.att-name[draggable="true"]'); if(!td) return;
+    const row = td.closest('tr[data-name]'); if(!row) return;
+    attDragName = row.dataset.name;
+    e.dataTransfer.effectAllowed = 'move';
+  });
+  t.addEventListener('dragover', e=>{
+    if(attSortMode==='custom' && e.target.closest('tr[data-name]')) e.preventDefault();
+  });
+  t.addEventListener('drop', e=>{
+    const row = e.target.closest('tr[data-name]'); if(!row) return;
+    attDrop(e, row.dataset.name);
+  });
+}
 function attDrop(e,targetName){
   e.preventDefault();
   if(attSortMode!=='custom' || !attDragName || attDragName===targetName) return;
@@ -894,21 +1049,23 @@ function renderAttend(){
       const v = rec[m]||'';
       if(v==='O') cnt++;
       if(v==='O'||v==='X') recorded++;
-      cells += `<td class="c att-cell ${v==='O'?'att-O':v==='X'?'att-X':''}" onclick="attToggle('${esc(name)}',${m})">${v==='O'?'○':v==='X'?'✕':''}</td>`;
+      cells += `<td class="c att-cell ${v==='O'?'att-O':v==='X'?'att-X':''}" data-k="${m}">${v==='O'?'○':v==='X'?'✕':''}</td>`;
     }
     EVENTS.forEach(ev=>{
       const v = rec[ev.key]||'';
       if(v==='O') cnt++;
       if(v==='O'||v==='X') recorded++;
-      cells += `<td class="c att-cell att-event ${v==='O'?'att-O':v==='X'?'att-X':''}" onclick="attToggle('${esc(name)}','${ev.key}')">${v==='O'?'○':v==='X'?'✕':''}</td>`;
+      cells += `<td class="c att-cell att-event ${v==='O'?'att-O':v==='X'?'att-X':''}" data-k="${ev.key}">${v==='O'?'○':v==='X'?'✕':''}</td>`;
     });
     const pct = recorded>0 ? Math.round(cnt/recorded*100) : null;
     const sumTxt = recorded>0
       ? `${cnt}/${recorded} <span style="font-weight:400;font-size:12px;color:var(--muted)">(${pct}%)</span>`
       : `${cnt}`;
-    const dragAttrs = draggable ? ` draggable="true" ondragstart="attDragStart(event,'${esc(name)}')" ondragover="attDragOver(event)" ondrop="attDrop(event,'${esc(name)}')" style="cursor:grab"` : '';
-    return `<tr><td class="att-name"${dragAttrs}>${draggable?'⠿ ':''}${esc(name)}${bapt?` <span style="font-size:11.5px;color:var(--muted)">${esc(bapt)}</span>`:''}</td>${cells}<td class="c att-sum">${sumTxt}</td>
-      <td class="c no-print"><button class="btn btn-sm btn-danger" onclick="delRosterName('${esc(name)}')">✕</button></td></tr>`;
+    // 이름은 data 속성으로만 넘긴다. 인라인 onclick 문자열에 넣으면 따옴표가 든
+    // 이름에서 핸들러가 깨지고(HTML 이스케이프로도 막히지 않는다) 주입 통로가 된다.
+    const dragAttrs = draggable ? ` draggable="true" style="cursor:grab"` : '';
+    return `<tr data-name="${esc(name)}"><td class="att-name"${dragAttrs}>${draggable?'⠿ ':''}${esc(name)}${bapt?` <span style="font-size:11.5px;color:var(--muted)">${esc(bapt)}</span>`:''}</td>${cells}<td class="c att-sum">${sumTxt}</td>
+      <td class="c no-print"><button class="btn btn-sm btn-danger" data-act="del">✕</button></td></tr>`;
   }).join('');
   // 월별 출석 합계
   let sums = '<tr class="total-row"><td class="r">월별 합계</td>';
@@ -942,6 +1099,9 @@ const DEFAULT_FB_CONFIG = {
 };
 let fbApp = null, fbDB = null, fbReady = false;
 let saveTimer = null, loadingFromCloud = false;
+// 우리가 마지막으로 읽거나 쓴 savedAt. 저장 직전에 원격 값과 비교해 덮어쓰기를 막는다.
+let cloudBaseline = null;
+let remoteWatch = false;
 
 function fbStatus(msg, ok){
   const st = document.getElementById('gist-status');
@@ -973,7 +1133,11 @@ async function fbLogin(){
     fbStatus('❌ '+msg, false);
   }
 }
-function fbLogout(){ firebase.auth().signOut(); }
+async function fbLogout(){
+  // 로그아웃 시 로컬 사본을 지우므로, 디바운스 대기 중인 변경분을 먼저 올린다.
+  if(saveTimer) await cloudSaveNow();
+  await firebase.auth().signOut();
+}
 function onAuthChange(user){
   const loginRow = document.getElementById('fb-login-row');
   const userRow  = document.getElementById('fb-user-row');
@@ -990,7 +1154,56 @@ function onAuthChange(user){
     loginRow.style.display='flex'; userRow.style.display='none';
     document.getElementById('fb-sync').textContent='';
     nav.style.display='none'; content.style.display='none'; locked.style.display='block';
+    hideConflict();
+    stopRemoteWatch();
+    // 전화번호·주소 등 단원 개인정보를 기기에 남기지 않는다.
+    // 로그인 없이는 편집이 불가능하므로 여기서 지워도 잃을 변경분이 없다.
+    clearLocalData();
   }
+}
+function clearLocalData(){
+  clearTimeout(saveTimer); saveTimer = null;
+  cloudBaseline = null;
+  try{ localStorage.removeItem(LS_KEY); }catch(e){}
+  S = { meetings:{}, suggestions:[], finance:{}, members:[], attendance:{}, roster:[], eventDates:{} };
+  finYM = ymNow();
+  renderAll();
+}
+function showConflict(remoteStamp){
+  const row = document.getElementById('fb-conflict-row');
+  if(row){
+    const t = remoteStamp ? new Date(remoteStamp).toLocaleString('ko-KR') : '';
+    document.getElementById('fb-conflict-msg').textContent =
+      '⚠ 다른 기기에서 저장한 내용이 있습니다'+(t?' ('+t+')':'')+'. 자동 저장을 멈췄습니다.';
+    row.style.display='flex';
+  }
+  const sync = document.getElementById('fb-sync');
+  if(sync){ sync.textContent='⚠ 저장 보류 — 충돌 확인 필요'; sync.style.color='#F5C451'; }
+}
+function hideConflict(){
+  const row = document.getElementById('fb-conflict-row');
+  if(row) row.style.display='none';
+}
+async function conflictReload(){ hideConflict(); await cloudLoad(); }
+async function conflictOverwrite(){
+  if(!confirm('다른 기기에서 저장한 내용을 지우고 이 기기의 내용으로 덮어씁니다.\n계속할까요?')) return;
+  hideConflict();
+  await cloudSaveNow(true);
+}
+/* 다른 기기의 저장을 실시간으로 감지해 충돌 전에 알린다. */
+function startRemoteWatch(){
+  if(!fbDB || remoteWatch) return;
+  remoteWatch = true;
+  fbDB.ref(FB_PATH+'/savedAt').on('value', snap=>{
+    const remote = snap.val();
+    if(!remote || cloudBaseline===null || remote===cloudBaseline) return;
+    showConflict(remote);
+  });
+}
+function stopRemoteWatch(){
+  if(!fbDB || !remoteWatch) return;
+  remoteWatch = false;
+  try{ fbDB.ref(FB_PATH+'/savedAt').off(); }catch(e){}
 }
 async function cloudLoad(){
   if(!fbDB || !firebase.auth().currentUser) return;
@@ -1012,11 +1225,16 @@ async function cloudLoad(){
       localStorage.setItem(LS_KEY, JSON.stringify(S));
       loadingFromCloud = false;
       renderAll();
+      cloudBaseline = loaded.savedAt || null;
+      hideConflict();
       const t = loaded.savedAt ? new Date(loaded.savedAt).toLocaleString('ko-KR') : '';
       sync.textContent = '✅ 동기화됨'+(t?' ('+t+')':''); sync.style.color='#7fd694';
     }else{
+      cloudBaseline = null;
+      hideConflict();
       sync.textContent = '새 저장소 — 수정하면 자동 저장됩니다'; sync.style.color='#bbb';
     }
+    startRemoteWatch();
   }catch(e){
     sync.textContent = '❌ '+ (e.code==='PERMISSION_DENIED' ? '권한 없음 (보안 규칙 확인)' : e.message);
     sync.style.color='#f88';
@@ -1030,17 +1248,29 @@ function scheduleCloudSave(){
   clearTimeout(saveTimer);
   saveTimer = setTimeout(cloudSaveNow, 1500);
 }
-async function cloudSaveNow(){
-  clearTimeout(saveTimer);
+async function cloudSaveNow(force){
+  clearTimeout(saveTimer); saveTimer = null;
   if(!fbDB || !firebase.auth().currentUser) return;
   const sync = document.getElementById('fb-sync');
   sync.textContent = '저장 중...'; sync.style.color='#bbb';
+  const prevBaseline = cloudBaseline;
   try{
-    await fbDB.ref(FB_PATH).set(Object.assign({}, S, {savedAt:new Date().toISOString(), savedBy:firebase.auth().currentUser.email}));
+    // 우리가 읽어온 뒤 다른 기기가 저장했는지 확인한다.
+    // 확인 없이 쓰면 마지막에 저장한 사람이 상대 수정을 통째로 지운다.
+    if(force!==true && cloudBaseline!==null){
+      const rs = await fbDB.ref(FB_PATH+'/savedAt').get();
+      const remote = rs.exists() ? rs.val() : null;
+      if(remote && remote !== cloudBaseline){ showConflict(remote); return; }
+    }
+    const stamp = new Date().toISOString();
+    cloudBaseline = stamp;   // 감시 리스너가 내 저장을 충돌로 오인하지 않도록 먼저 갱신
+    await fbDB.ref(FB_PATH).set(Object.assign({}, S, {savedAt:stamp, savedBy:firebase.auth().currentUser.email}));
     // 시간표 앱이 읽어갈 수 있도록 이름 목록만 공개 노드에 게시 (개인정보 제외)
-    await fbDB.ref('jeonrye/publicRoster').set({ names: S.roster, updatedAt: new Date().toISOString() });
+    await fbDB.ref('jeonrye/publicRoster').set({ names: S.roster, updatedAt: stamp });
+    hideConflict();
     sync.textContent = '✅ 자동 저장됨 '+new Date().toLocaleTimeString('ko-KR'); sync.style.color='#7fd694';
   }catch(e){
+    cloudBaseline = prevBaseline;
     sync.textContent = '❌ 저장 실패: '+(e.code==='PERMISSION_DENIED'?'권한 없음':e.message); sync.style.color='#f88';
   }
 }
@@ -1065,6 +1295,9 @@ restore();
 // 회의 월 기본값
 document.getElementById('meet-ym').value = ymNow();
 document.getElementById('meet-ym').addEventListener('change', loadMeetingForm);
+
+// 출석부 위임 리스너 (표를 다시 그려도 유지된다)
+bindAttendEvents();
 
 // Firebase 초기화 (자동 연결 + 로그인 유지)
 initFirebase();
