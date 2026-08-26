@@ -1,2 +1,3 @@
 # Claude Code 개인 설정 (로컬 경로 포함)
 .claude/settings.local.json
+.claude/auto-commit.sh
