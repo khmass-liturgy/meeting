@@ -336,7 +336,6 @@ td input{width:100%;border:none;padding:2px;background:transparent}
 const LS_KEY = 'jeonrye-meeting-v1';
 const ROSTER_URL = 'https://raw.githubusercontent.com/khmass-liturgy/liturgy/main/index.html';
 const FB_PATH = 'jeonrye/data';   // Realtime Database 저장 경로
-const LITURGY_ROSTER_PATH = 'jeonrye/liturgyRoster'; // 시간표 앱이 게시하는 공개 명단(있으면 우선 사용)
 
 let S = {
   meetings: {},      // "YYYY-MM": {date, place, count, content, savedAt}
@@ -728,7 +727,8 @@ function renderDues(){
 let mbSortMode = 'name'; // 'name' | 'feast' | 'joined'
 function parseFeast(f){
   if(!f) return null;
-  const m = String(f).match(/(\d{1,2})\s*[\/.]\s*(\d{1,2})/);
+  // 7/22 · 7.22 · 7-22 · 7월 22일 · 7월22일 을 모두 받는다. 연도가 붙은 2024-07-22 는 월·일(7/22)만 읽는다.
+  const m = String(f).match(/(?:^|\D)(\d{1,2})\s*(?:월|[\/.\-])\s*(\d{1,2})(?!\d)/);
   if(!m) return null;
   const mo = parseInt(m[1],10), d = parseInt(m[2],10);
   if(mo<1||mo>12||d<1||d>31) return null;
@@ -940,26 +940,13 @@ async function fetchRoster(){
   const st = document.getElementById('att-status');
   st.textContent = '불러오는 중...'; st.style.color='var(--muted)';
   try{
-    let names = [], src = '';
-    // (1) 시간표 앱이 게시한 Firebase 공개 명단 - 상대 코드 구조와 무관하다
-    if(fbDB && firebase.auth().currentUser){
-      try{
-        const snap = await fbDB.ref(LITURGY_ROSTER_PATH+'/names').get();
-        if(snap.exists()){
-          const v = snap.val();
-          names = (Array.isArray(v) ? v : Object.values(v||{})).map(x=>String(x==null?'':x).trim()).filter(Boolean);
-          if(names.length) src = 'Firebase 공개 명단';
-        }
-      }catch(e){ /* 노드가 없거나 권한이 없으면 (2)로 넘어간다 */ }
-    }
-    // (2) 예비 경로: 시간표 앱 HTML에서 추출
-    if(!names.length){
-      const res = await fetch(ROSTER_URL, {cache:'no-store'});
-      if(!res.ok) throw new Error('HTTP '+res.status);
-      names = parseRosterNames(await res.text());
-      src = '깃허브 시간표 앱';
-      if(!names.length) throw new Error('명단(members)을 찾지 못했습니다. 시간표 앱 구조가 바뀌었을 수 있습니다.');
-    }
+    // 시간표 앱 HTML의 members 배열에서 추출한다.
+    // (시간표 앱은 Firebase 로 명단을 게시하지 않고 이쪽의 publicRoster 를 읽어가기만 한다.)
+    const res = await fetch(ROSTER_URL, {cache:'no-store'});
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const names = parseRosterNames(await res.text());
+    const src = '깃허브 시간표 앱';
+    if(!names.length) throw new Error('명단(members)을 찾지 못했습니다. 시간표 앱 구조가 바뀌었을 수 있습니다.');
     let added = 0;
     names.forEach(n=>{
       if(!S.roster.includes(n)){ S.roster.push(n); added++; }
