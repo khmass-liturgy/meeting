@@ -1144,6 +1144,8 @@ let fbApp = null, fbDB = null, fbReady = false;
 let saveTimer = null, loadingFromCloud = false;
 // 클라우드를 한 번이라도 성공적으로 읽었는가. 읽기 전에는 절대 쓰지 않는다.
 let cloudLoaded = false;
+// 서버에 아직 못 올린 변경이 있는지 추적한다 (editSeq: 편집 횟수, savedSeq: 서버에 반영된 편집 횟수).
+let editSeq = 0, savedSeq = 0;
 // 우리가 마지막으로 읽거나 쓴 savedAt. 저장 직전에 원격 값과 비교해 덮어쓰기를 막는다.
 let cloudBaseline = null;
 let remoteWatch = false;
@@ -1179,8 +1181,12 @@ async function fbLogin(){
   }
 }
 async function fbLogout(){
-  // 로그아웃 시 로컬 사본을 지우므로, 디바운스 대기 중인 변경분을 먼저 올린다.
-  if(saveTimer) await cloudSaveNow();
+  // 로그아웃은 이 기기의 사본을 지우므로, 대기 중인 변경분을 먼저 올린다. 서버에 못 올린 변경(충돌·네트워크 오류 등)이 남아 있으면 경고한다.
+  if(saveTimer || editSeq!==savedSeq) await cloudSaveNow();
+  if(editSeq!==savedSeq){
+    const ok = confirm('⚠ 서버에 저장되지 않은 변경 내용이 있습니다.\n(다른 기기와 충돌했거나 네트워크 오류일 수 있습니다)\n\n지금 로그아웃하면 이 변경 내용이 사라집니다.\n그래도 로그아웃할까요?');
+    if(!ok) return;
+  }
   await firebase.auth().signOut();
 }
 function onAuthChange(user){
@@ -1210,6 +1216,7 @@ function clearLocalData(){
   clearTimeout(saveTimer); saveTimer = null;
   cloudBaseline = null;
   cloudLoaded = false;
+  savedSeq = editSeq;
   try{ localStorage.removeItem(LS_KEY); }catch(e){}
   S = { meetings:{}, suggestions:[], finance:{}, members:[], attendance:{}, roster:[], eventDates:{} };
   finYM = ymNow();
@@ -1273,6 +1280,7 @@ async function cloudLoad(){
       renderAll();
       cloudBaseline = loaded.savedAt || null;
       cloudLoaded = true;
+      savedSeq = editSeq;   // 화면이 서버 내용으로 교체됐으니 미저장 변경은 없다
       hideConflict();
       const t = loaded.savedAt ? new Date(loaded.savedAt).toLocaleString('ko-KR') : '';
       sync.textContent = '✅ 동기화됨'+(t?' ('+t+')':''); sync.style.color='#7fd694';
@@ -1300,6 +1308,7 @@ function warnNotLoaded(){
 function scheduleCloudSave(){
   if(loadingFromCloud) return;
   if(!fbDB || !firebase?.auth?.().currentUser) return;
+  editSeq++;
   if(!cloudLoaded){ warnNotLoaded(); return; }
   const sync = document.getElementById('fb-sync');
   sync.textContent = '저장 대기...'; sync.style.color='#bbb';
@@ -1321,11 +1330,13 @@ async function cloudSaveNow(force){
       const remote = rs.exists() ? rs.val() : null;
       if(remote && remote !== cloudBaseline){ showConflict(remote); return; }
     }
+    const seqAtSave = editSeq;
     const stamp = new Date().toISOString();
     cloudBaseline = stamp;   // 감시 리스너가 내 저장을 충돌로 오인하지 않도록 먼저 갱신
     await fbDB.ref(FB_PATH).set(Object.assign({}, S, {savedAt:stamp, savedBy:firebase.auth().currentUser.email}));
     // 시간표 앱이 읽어갈 수 있도록 이름 목록만 공개 노드에 게시 (개인정보 제외)
     await fbDB.ref('jeonrye/publicRoster').set({ names: S.roster, updatedAt: stamp });
+    savedSeq = seqAtSave;
     hideConflict();
     sync.textContent = '✅ 자동 저장됨 '+new Date().toLocaleTimeString('ko-KR'); sync.style.color='#7fd694';
   }catch(e){
