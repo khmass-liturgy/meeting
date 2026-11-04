@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>교하성당 전례단 회의록</title>
+<title>교하성당 단체 회의록</title>
 <!-- 아이콘 (십자가 문양, 데이터 URI — 별도 파일 불필요) -->
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%236E1E2B'/%3E%3Cpath d='M32 10v44M18 26h28' stroke='%23E9C46A' stroke-width='7' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%236E1E2B'/%3E%3Cpath d='M32 10v44M18 26h28' stroke='%23E9C46A' stroke-width='7' stroke-linecap='round'/%3E%3C/svg%3E">
@@ -49,7 +49,20 @@ input,select,textarea{font-family:inherit;font-size:14px;padding:8px 10px;border
 input:focus,select:focus,textarea:focus{outline:2px solid var(--gold-l)}
 textarea{width:100%;min-height:110px;line-height:1.65;resize:vertical}
 /* 회의록 입력칸: 화면 높이의 약 60%로 넓게 (길게 쓰면 스크롤, 아래 모서리를 끌어 더 키울 수도 있음) */
-#meet-content{height:60vh;min-height:380px;font-size:15.5px;line-height:1.75;padding:12px 14px}
+#meet-content,.meet-big{height:60vh;min-height:380px;font-size:15.5px;line-height:1.75;padding:12px 14px}
+
+/* 큰 카테고리 (전례단 / 사목평의회 / 남성총구역) */
+.cat-nav{max-width:1080px;margin:12px auto 0;display:flex;gap:8px;flex-wrap:wrap;overflow:visible}
+.cat-nav button{border:1px solid #8a3a48;background:var(--wine-d);color:#E4CFA6;padding:7px 16px;border-radius:20px;
+  font-size:14px;font-weight:600;cursor:pointer;font-family:inherit}
+.cat-nav button.on{background:var(--gold-l);border-color:var(--gold-l);color:var(--wine-d)}
+header.no-subnav{padding-bottom:16px}
+
+/* 회의 자료 파일 목록 */
+.file-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:7px 0;border-bottom:1px dashed var(--line);font-size:14px}
+.file-row:last-child{border-bottom:none}
+.file-row .fname{flex:1;min-width:160px;word-break:break-all}
+.file-row .fmeta{font-size:12px;color:var(--muted)}
 .btn{font-family:inherit;font-size:13.5px;font-weight:500;padding:8px 14px;border-radius:8px;border:1px solid var(--line);
   background:#fff;color:var(--ink);cursor:pointer}
 .btn:hover{border-color:var(--gold)}
@@ -122,10 +135,15 @@ td input{width:100%;border:none;padding:2px;background:transparent}
 
 <header>
   <div class="head-top">
-    <h1>✠ 교하성당 전례단 회의록</h1>
-    <span class="sub">매월 넷째 화요일 저녁미사 후 · 마테오방</span>
+    <h1>✠ 교하성당 단체 회의록</h1>
+    <span class="sub">전례단 매월 넷째 화요일 저녁미사 후 · 사목평의회 매월 첫째 화요일 · 남성총구역 매월 첫째 일요일</span>
     <span class="next-meet" id="next-meet"></span>
   </div>
+  <nav id="cat-nav" class="cat-nav" style="display:none">
+    <button class="on" data-cat="liturgy" onclick="showCat('liturgy')">전례단</button>
+    <button data-cat="pastoral" onclick="showCat('pastoral')">사목평의회</button>
+    <button data-cat="men" onclick="showCat('men')">남성총구역</button>
+  </nav>
   <nav id="main-nav" style="display:none">
     <button class="on" data-tab="meeting" onclick="showTab('meeting')">회의내용</button>
     <button data-tab="suggest" onclick="showTab('suggest')">건의사항</button>
@@ -329,6 +347,10 @@ td input{width:100%;border:none;padding:2px;background:transparent}
   </div>
 </section>
 
+<!-- ═══════ 사목평의회 / 남성총구역 (같은 틀 — 내용은 JS 가 채운다) ═══════ -->
+<section class="tab" id="tab-pastoral"></section>
+<section class="tab" id="tab-men"></section>
+
 </div><!-- /#app-content -->
 
 </main>
@@ -346,7 +368,8 @@ let S = {
   members: [],       // {name, bapt, feast, phone, duty, joined, addr, note}
   attendance: {},    // "YYYY": { name: {1:'O'|'X'|'', ...12} }
   roster: [],        // 출석부 이름 목록
-  eventDates: {}      // { "YYYY": {easter:'YYYY-MM-DD', christmas:'YYYY-MM-DD'} }
+  eventDates: {},     // { "YYYY": {easter:'YYYY-MM-DD', christmas:'YYYY-MM-DD'} }
+  groups: {}         // 사목평의회·남성총구역: { 키: {meetings, files} } — 아래 '단체 회의' 참고
 };
 
 let finYM  = ymNow();
@@ -359,6 +382,7 @@ function saveLocal(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(S)); }cat
 function persist(){ saveLocal(); scheduleCloudSave(); }
 function restore(){
   try{ const d = localStorage.getItem(LS_KEY); if(d) S = Object.assign(S, JSON.parse(d)); }catch(e){}
+  groupsEnsure();
 }
 
 /* ── 유틸 ── */
@@ -382,10 +406,23 @@ function ensureXLSX(statusId){
 }
 
 /* ════════════════════════ 탭 ════════════════════════ */
+/* 큰 카테고리(전례단 / 사목평의회 / 남성총구역). 전례단만 아래에 작은 탭(회의내용·건의사항…)을 가진다. */
+let curCat = 'liturgy', curLitTab = 'meeting';
 function showTab(id){
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
   document.getElementById('tab-'+id).classList.add('on');
-  document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on', b.dataset.tab===id));
+  document.querySelectorAll('#main-nav button').forEach(b=>b.classList.toggle('on', b.dataset.tab===id));
+  curLitTab = id;
+}
+function showCat(cat){
+  curCat = cat;
+  document.querySelectorAll('#cat-nav button').forEach(b=>b.classList.toggle('on', b.dataset.cat===cat));
+  const lit = cat==='liturgy';
+  document.getElementById('main-nav').style.display = lit ? 'flex' : 'none';
+  document.querySelector('header').classList.toggle('no-subnav', !lit);
+  if(lit){ showTab(curLitTab); return; }
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
+  document.getElementById('tab-'+cat).classList.add('on');
 }
 
 /* ════════════════════════ 회의내용 ════════════════════════ */
@@ -424,7 +461,7 @@ function renderMeetings(){
     const r = S.meetings[ym];
     const [y,m] = ym.split('-');
     return `<div class="meet-item">
-      <h3>${Number(y)}년 ${Number(m)}월 정기회의</h3>
+      <h3>${Number(y)}년 ${Number(m)}월 전례단 정기회의</h3>
       <div class="meet-meta">${esc(r.date)} · ${esc(r.place)}${r.count?` · 참석 ${esc(r.count)}명`:''}
         <button class="btn btn-sm no-print" onclick="editMeeting('${ym}')">수정</button>
         <button class="btn btn-sm btn-danger no-print" onclick="delMeeting('${ym}')">삭제</button></div>
@@ -1115,6 +1152,312 @@ function renderAttend(){
   if(sel) sel.value = attSortMode;
 }
 
+/* ════════════════════════ 단체 회의 (사목평의회 · 남성총구역) ════════════════════════
+   두 단체는 같은 구조(회의록 + 회의 자료 업로드)라서 한 벌의 코드를 키(pastoral / men)로 나눠 쓴다.
+   데이터: S.groups[키] = { meetings:{"YYYY-MM":{...}}, files:{"YYYY-MM":[{id,name,size,type,uploadedAt,by}]} } */
+const GRP_MAX_BYTES = 7*1024*1024;  // base64 로 부풀면 약 9.3MB — Realtime Database 문자열 한도(10MB) 안쪽
+const GRP_EXT = ['hwp','hwpx','xls','xlsx','csv','pdf','doc','docx','ppt','pptx','txt','jpg','jpeg','png','zip'];
+// 파일 본문(base64)은 S(data 노드)와 분리해 이 경로에 둔다. 목록·메타데이터만 S.groups 에 있다.
+const GRP_FILE_PATH = 'jeonrye/meetingFiles';
+
+function firstTuesday(y,m){ // m: 1~12
+  const first = new Date(y, m-1, 1);
+  return new Date(y, m-1, 1 + (2 - first.getDay() + 7) % 7);   // 화요일=2
+}
+function firstSunday(y,m){
+  const first = new Date(y, m-1, 1);
+  return new Date(y, m-1, 1 + (7 - first.getDay()) % 7);       // 일요일=0
+}
+const GROUPS = {
+  pastoral: { label:'사목평의회', icon:'🏛', rule:'매월 첫째 화요일', short:'첫째 화요일', fn:firstTuesday },
+  men:      { label:'남성총구역', icon:'👥', rule:'매월 첫째 일요일', short:'첫째 일요일', fn:firstSunday }
+};
+const GROUP_KEYS = Object.keys(GROUPS);
+
+function nextOccurrence(fn){
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  let d = fn(now.getFullYear(), now.getMonth()+1);
+  if(d < today){
+    const nm = now.getMonth()+2;
+    d = nm>12 ? fn(now.getFullYear()+1,1) : fn(now.getFullYear(), nm);
+  }
+  return d;
+}
+function fmtNext(d){
+  const wd = ['일','월','화','수','목','금','토'][d.getDay()];
+  return (d.getMonth()+1)+'월 '+d.getDate()+'일('+wd+')';
+}
+function updateNextMeet(){
+  const items = [['전례단', fourthTuesday]].concat(GROUP_KEYS.map(k=>[GROUPS[k].label, GROUPS[k].fn]))
+    .map(x=>[x[0], nextOccurrence(x[1])])
+    .sort((a,b)=>a[1]-b[1]);
+  document.getElementById('next-meet').textContent =
+    '다음 회의 · ' + items.map(x=>x[0]+' '+fmtNext(x[1])).join(' · ');
+}
+
+/* Firebase 는 빈 배열/객체를 저장하지 않으므로 항상 기본형을 보정한다. */
+function groupsEnsure(){
+  if(!S.groups || typeof S.groups!=='object') S.groups = {};
+  GROUP_KEYS.forEach(k=>{
+    if(!S.groups[k] || typeof S.groups[k]!=='object') S.groups[k] = {};
+    if(!S.groups[k].meetings) S.groups[k].meetings = {};
+    if(!S.groups[k].files) S.groups[k].files = {};
+  });
+}
+function grp(k){ groupsEnsure(); return S.groups[k]; }
+function grpFiles(k, ym){
+  const v = grp(k).files[ym];
+  return Array.isArray(v) ? v.filter(Boolean) : Object.values(v||{});
+}
+function fmtSize(n){
+  n = Number(n)||0;
+  return n>=1048576 ? (n/1048576).toFixed(1)+'MB' : Math.max(1,Math.round(n/1024))+'KB';
+}
+function grpMsg(id, msg, kind){
+  const el = document.getElementById(id); if(!el) return;
+  el.textContent = msg;
+  el.style.color = kind==='ok' ? 'var(--ok)' : kind==='bad' ? 'var(--bad)' : 'var(--muted)';
+}
+
+/* ── 화면 뼈대 (단체마다 같은 모양, id 만 키로 구분) ── */
+function groupTabHtml(k){
+  const G = GROUPS[k];
+  return `
+  <div class="card no-print">
+    <h2>${G.icon} ${G.label} 회의록 작성 <span class="pill" id="${k}-badge"></span></h2>
+    <div class="row" style="margin-bottom:8px">
+      <input type="month" id="${k}-ym" title="회의 월">
+      <input type="date" id="${k}-date" title="회의 날짜">
+      <input type="text" id="${k}-place" placeholder="장소" style="width:130px" title="장소">
+      <input type="number" id="${k}-count" placeholder="참석 인원" style="width:100px" min="0">
+    </div>
+    <textarea id="${k}-content" class="meet-big" placeholder="회의 내용을 입력하세요.&#10;예)&#10;1. 지난 회의 결과 보고&#10;2. 안건 논의&#10;3. ..."></textarea>
+    <div class="row" style="margin-top:8px">
+      <button class="btn btn-p" data-act="save">회의록 저장</button>
+      <span class="status" id="${k}-status"></span>
+    </div>
+    <p class="hint">${G.label} 정기회의는 <b>${G.rule}</b>입니다. 월을 고르면 그 달의 ${G.short}이 날짜에 자동으로 들어갑니다.</p>
+  </div>
+  <div class="card no-print">
+    <h2>📎 회의 자료 업로드 <span class="pill" id="${k}-files-month"></span></h2>
+    <div class="row">
+      <input type="file" id="${k}-file" multiple accept=".hwp,.hwpx,.xls,.xlsx,.csv,.pdf,.doc,.docx,.ppt,.pptx,.txt,.jpg,.jpeg,.png,.zip">
+      <span class="status" id="${k}-up-status"></span>
+    </div>
+    <p class="hint">한글(hwp·hwpx), 엑셀(xls·xlsx·csv), pdf, 워드(doc·docx), 파워포인트(ppt·pptx), txt, 이미지(jpg·png), zip 파일을 올릴 수 있습니다. 여러 개를 한꺼번에 선택해도 됩니다. 파일 1개당 <b>최대 7MB</b>입니다. 위에서 선택한 <b>회의 월</b>의 자료로 등록됩니다.</p>
+    <div id="${k}-files" style="margin-top:8px"></div>
+  </div>
+  <div class="card">
+    <h2>📚 지난 ${G.label} 회의 <button class="btn btn-sm no-print" style="margin-left:auto" data-act="print">🖨 인쇄</button></h2>
+    <div id="${k}-list"></div>
+  </div>`;
+}
+
+/* ── 회의록 ── */
+function loadGroupForm(k){
+  const ym = document.getElementById(k+'-ym').value;
+  if(!ym) return;
+  const G = GROUPS[k];
+  const [y,m] = ym.split('-').map(Number);
+  const t1 = G.fn(y,m);
+  const rec = grp(k).meetings[ym];
+  document.getElementById(k+'-date').value    = rec?.date || fmtDate(t1);
+  document.getElementById(k+'-place').value   = rec?.place || '';
+  document.getElementById(k+'-count').value   = rec?.count ?? '';
+  document.getElementById(k+'-content').value = rec?.content || '';
+  document.getElementById(k+'-badge').textContent = m+'월 '+G.short+': '+fmtDate(t1);
+  document.getElementById(k+'-files-month').textContent = y+'년 '+m+'월';
+  renderGroupFiles(k);
+}
+function saveGroup(k){
+  const ym = document.getElementById(k+'-ym').value;
+  if(!ym){ alert('회의 월을 선택하세요'); return; }
+  grp(k).meetings[ym] = {
+    date:  document.getElementById(k+'-date').value,
+    place: document.getElementById(k+'-place').value.trim(),
+    count: document.getElementById(k+'-count').value,
+    content: document.getElementById(k+'-content').value,
+    savedAt: new Date().toISOString()
+  };
+  persist(); renderGroup(k);
+  grpMsg(k+'-status', '✅ 저장됨', 'ok');
+  setTimeout(()=>grpMsg(k+'-status',''), 2000);
+}
+function editGroup(k, ym){
+  document.getElementById(k+'-ym').value = ym;
+  loadGroupForm(k);
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+function delGroup(k, ym){
+  if(!confirm(ym+' '+GROUPS[k].label+' 회의록을 삭제할까요? (올린 자료 파일은 그대로 남습니다)')) return;
+  delete grp(k).meetings[ym];
+  persist(); renderGroup(k);
+}
+
+/* ── 자료 목록 ── */
+// 파일 이름은 data 속성으로만 넘긴다(인라인 onclick 에 넣으면 따옴표가 든 이름에서 깨진다).
+function groupFileRows(k, ym, withDelete){
+  const list = grpFiles(k, ym);
+  if(!list.length) return '<div class="hint" style="margin:4px 0">등록된 자료가 없습니다.</div>';
+  return list.map(f=>`<div class="file-row">
+      <span class="fname">📄 ${esc(f.name)}</span>
+      <span class="fmeta">${fmtSize(f.size)} · ${esc(String(f.uploadedAt||'').slice(0,10))}</span>
+      <button class="btn btn-sm no-print" data-act="dl" data-ym="${esc(ym)}" data-id="${esc(f.id)}">다운로드</button>
+      ${withDelete ? `<button class="btn btn-sm btn-danger no-print" data-act="rm" data-ym="${esc(ym)}" data-id="${esc(f.id)}">삭제</button>` : ''}
+    </div>`).join('');
+}
+function renderGroupFiles(k){
+  const box = document.getElementById(k+'-files'); if(!box) return;
+  const ym = document.getElementById(k+'-ym').value;
+  box.innerHTML = ym ? groupFileRows(k, ym, true) : '';
+}
+function renderGroup(k){
+  const box = document.getElementById(k+'-list'); if(!box) return;
+  const G = GROUPS[k], g = grp(k);
+  const months = new Set(Object.keys(g.meetings));
+  Object.keys(g.files).forEach(m=>{ if(grpFiles(k,m).length) months.add(m); });
+  const keys = [...months].sort().reverse();
+  if(!keys.length){
+    box.innerHTML = '<div class="empty">저장된 '+G.label+' 기록이 없습니다.</div>';
+  } else {
+    box.innerHTML = keys.map(ym=>{
+      const r = g.meetings[ym];
+      const [y,m] = ym.split('-');
+      const head = r
+        ? `${esc(r.date)}${r.place?' · '+esc(r.place):''}${r.count?` · 참석 ${esc(r.count)}명`:''}`
+        : '회의록 미작성 (자료만 등록됨)';
+      return `<div class="meet-item">
+        <h3>${Number(y)}년 ${Number(m)}월 ${G.label} 회의</h3>
+        <div class="meet-meta">${head}
+          <button class="btn btn-sm no-print" data-act="edit" data-ym="${esc(ym)}">수정</button>
+          ${r ? `<button class="btn btn-sm btn-danger no-print" data-act="del" data-ym="${esc(ym)}">삭제</button>` : ''}</div>
+        ${r && r.content ? `<pre>${esc(r.content)}</pre>` : ''}
+        ${grpFiles(k,ym).length ? `<div style="margin-top:6px">${groupFileRows(k,ym,false)}</div>` : ''}
+      </div>`;
+    }).join('');
+  }
+  renderGroupFiles(k);
+}
+
+/* ── 업로드 / 다운로드 / 삭제 ── */
+function readAsBase64(file){
+  return new Promise((res,rej)=>{
+    const rd = new FileReader();
+    rd.onload = () => { const s = String(rd.result); res(s.slice(s.indexOf(',')+1)); };
+    rd.onerror = () => rej(new Error('파일을 읽지 못했습니다'));
+    rd.readAsDataURL(file);
+  });
+}
+function b64ToBlob(b64, type){
+  const bin = atob(b64), arr = new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) arr[i] = bin.charCodeAt(i);
+  return new Blob([arr], {type: type||'application/octet-stream'});
+}
+function grpReady(statusId){
+  if(!fbDB || !firebase.auth().currentUser){ grpMsg(statusId,'❌ 로그인 후 이용할 수 있습니다','bad'); return false; }
+  if(!cloudLoaded){ grpMsg(statusId,'❌ 클라우드를 아직 읽지 못했습니다. 새로고침 후 다시 시도하세요','bad'); return false; }
+  return true;
+}
+function grpErr(e){
+  return e && e.code==='PERMISSION_DENIED'
+    ? '권한 없음 — Firebase 규칙에 meetingFiles 경로를 추가해야 합니다'
+    : (e && e.message) || '알 수 없는 오류';
+}
+async function uploadGroupFiles(k, input){
+  const files = Array.from(input.files || []);
+  input.value = '';   // 같은 파일을 다시 고를 수 있도록
+  if(!files.length) return;
+  const st = k+'-up-status';
+  const ym = document.getElementById(k+'-ym').value;
+  if(!ym){ alert('회의 월을 먼저 선택하세요'); return; }
+  if(!grpReady(st)) return;
+  let ok = 0; const fails = [];
+  for(let i=0;i<files.length;i++){
+    const f = files[i];
+    grpMsg(st, `업로드 중 (${i+1}/${files.length}) ${f.name}`, 'info');
+    const dot = f.name.lastIndexOf('.');
+    const ext = dot<0 ? '' : f.name.slice(dot+1).toLowerCase();
+    if(!GRP_EXT.includes(ext)){ fails.push(`${f.name}: 지원하지 않는 형식`); continue; }
+    if(f.size === 0){ fails.push(`${f.name}: 빈 파일`); continue; }
+    if(f.size > GRP_MAX_BYTES){ fails.push(`${f.name}: ${fmtSize(f.size)} — 7MB를 넘습니다. 파일을 줄여서 올려 주세요`); continue; }
+    try{
+      const data = await readAsBase64(f);
+      const id = Date.now().toString(36) + Math.random().toString(36).slice(2,8);
+      const type = f.type || 'application/octet-stream';
+      // 본문을 먼저 올리고, 성공했을 때만 목록에 올린다 (목록에는 있는데 파일이 없는 상태를 막는다)
+      await fbDB.ref(GRP_FILE_PATH+'/'+id).set({name:f.name, type, size:f.size, data});
+      const list = grpFiles(k, ym).slice();
+      list.push({id, name:f.name, type, size:f.size, uploadedAt:new Date().toISOString(),
+                 by:firebase.auth().currentUser.email});
+      grp(k).files[ym] = list;
+      persist();
+      ok++;
+    }catch(e){ fails.push(`${f.name}: ${grpErr(e)}`); }
+  }
+  renderGroup(k);
+  if(fails.length) grpMsg(st, `${ok?`✅ ${ok}개 올림 / `:''}❌ ${fails.length}개 실패 — ${fails.join(' | ')}`, 'bad');
+  else grpMsg(st, `✅ ${ok}개 올렸습니다`, 'ok');
+}
+async function downloadGroupFile(k, ym, id, btn){
+  const meta = grpFiles(k, ym).find(f=>f.id===id); if(!meta) return;
+  if(!fbDB || !firebase.auth().currentUser) return;
+  const label = btn ? btn.textContent : '';
+  if(btn){ btn.disabled = true; btn.textContent = '받는 중...'; }
+  try{
+    const snap = await fbDB.ref(GRP_FILE_PATH+'/'+id).get();
+    if(!snap.exists()) throw new Error('서버에서 파일을 찾지 못했습니다');
+    const v = snap.val();
+    const url = URL.createObjectURL(b64ToBlob(v.data, v.type));
+    const a = document.createElement('a');
+    a.href = url; a.download = meta.name || v.name || 'file';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 10000);
+  }catch(e){
+    alert('다운로드 실패: ' + grpErr(e));
+  }finally{
+    if(btn){ btn.disabled = false; btn.textContent = label; }
+  }
+}
+async function removeGroupFile(k, ym, id){
+  const meta = grpFiles(k, ym).find(f=>f.id===id); if(!meta) return;
+  if(!confirm('"'+meta.name+'" 파일을 삭제할까요? 되돌릴 수 없습니다.')) return;
+  if(!grpReady(k+'-up-status')) return;
+  try{
+    await fbDB.ref(GRP_FILE_PATH+'/'+id).remove();
+  }catch(e){ alert('삭제 실패: ' + grpErr(e)); return; }
+  const rest = grpFiles(k, ym).filter(f=>f.id!==id);
+  if(rest.length) grp(k).files[ym] = rest; else delete grp(k).files[ym];
+  persist(); renderGroup(k);
+}
+
+/* ── 연결 ── 목록은 다시 그려도 유지되도록 탭 요소에 위임 리스너를 한 번만 건다. */
+function bindGroupEvents(k){
+  const t = document.getElementById('tab-'+k);
+  if(!t || t.dataset.bound) return;
+  t.dataset.bound = '1';
+  t.addEventListener('click', e=>{
+    const b = e.target.closest('button[data-act]'); if(!b) return;
+    const a = b.dataset.act, ym = b.dataset.ym, id = b.dataset.id;
+    if(a==='save') saveGroup(k);
+    else if(a==='print') window.print();
+    else if(a==='edit') editGroup(k, ym);
+    else if(a==='del') delGroup(k, ym);
+    else if(a==='dl') downloadGroupFile(k, ym, id, b);
+    else if(a==='rm') removeGroupFile(k, ym, id);
+  });
+  document.getElementById(k+'-file').addEventListener('change', e=>uploadGroupFiles(k, e.target));
+  document.getElementById(k+'-ym').addEventListener('change', ()=>loadGroupForm(k));
+}
+function buildGroupTabs(){
+  GROUP_KEYS.forEach(k=>{
+    const sec = document.getElementById('tab-'+k); if(!sec) return;
+    sec.innerHTML = groupTabHtml(k);
+    document.getElementById(k+'-ym').value = ymNow();
+    bindGroupEvents(k);
+  });
+}
+
 /* ════════════════════════ Firebase 저장/자동 동기화 ════════════════════════ */
 // 코드에 직접 심어둔 기본 설정 — 매번 붙여넣지 않아도 자동으로 연결됩니다.
 // (apiKey는 비밀번호가 아니라 프로젝트 식별용 값이라 코드에 있어도 안전합니다.
@@ -1187,13 +1530,15 @@ function onAuthChange(user){
   if(user){
     loginRow.style.display='none'; userRow.style.display='flex';
     document.getElementById('fb-user').textContent = user.email;
-    nav.style.display='flex'; content.style.display='block'; locked.style.display='none';
+    document.getElementById('cat-nav').style.display='flex'; showCat(curCat); content.style.display='block'; locked.style.display='none';
     renderAll();
     cloudLoad();
   }else{
     loginRow.style.display='flex'; userRow.style.display='none';
     document.getElementById('fb-sync').textContent='';
-    nav.style.display='none'; content.style.display='none'; locked.style.display='block';
+    nav.style.display='none'; document.getElementById('cat-nav').style.display='none';
+    document.querySelector('header').classList.add('no-subnav');
+    content.style.display='none'; locked.style.display='block';
     hideConflict();
     stopRemoteWatch();
     // 전화번호·주소 등 단원 개인정보를 기기에 남기지 않는다.
@@ -1207,7 +1552,7 @@ function clearLocalData(){
   cloudLoaded = false;
   savedSeq = editSeq;
   try{ localStorage.removeItem(LS_KEY); }catch(e){}
-  S = { meetings:{}, suggestions:[], finance:{}, members:[], attendance:{}, roster:[], eventDates:{} };
+  S = { meetings:{}, suggestions:[], finance:{}, members:[], attendance:{}, roster:[], eventDates:{}, groups:{} };
   finYM = ymNow();
   renderAll();
 }
@@ -1256,7 +1601,7 @@ async function cloudLoad(){
     if(snap.exists()){
       const loaded = snap.val();
       loadingFromCloud = true;
-      ['meetings','suggestions','finance','members','attendance','roster','eventDates'].forEach(k=>{
+      ['meetings','suggestions','finance','members','attendance','roster','eventDates','groups'].forEach(k=>{
         if(loaded[k]!==undefined) S[k]=loaded[k];
       });
       // Firebase는 빈 배열/객체를 저장하지 않으므로 기본형 보정
@@ -1335,21 +1680,16 @@ async function cloudSaveNow(force){
 }
 
 /* ════════════════════════ 초기화 ════════════════════════ */
-function renderAll(){ renderMeetings(); renderSuggest(); renderFinance(); renderDues(); renderMembers(); renderAttend(); loadMeetingForm(); }
+function renderAll(){
+  groupsEnsure();
+  renderMeetings(); renderSuggest(); renderFinance(); renderDues(); renderMembers(); renderAttend(); loadMeetingForm();
+  GROUP_KEYS.forEach(k=>{ renderGroup(k); loadGroupForm(k); });
+}
 
 restore();
 
-// 다음 회의일 배지
-(function(){
-  const now = new Date();
-  let d = fourthTuesday(now.getFullYear(), now.getMonth()+1);
-  if(d < new Date(now.getFullYear(),now.getMonth(),now.getDate())){
-    const nm = now.getMonth()+2;
-    d = nm>12 ? fourthTuesday(now.getFullYear()+1,1) : fourthTuesday(now.getFullYear(), nm);
-  }
-  const wd = ['일','월','화','수','목','금','토'][d.getDay()];
-  document.getElementById('next-meet').textContent = '다음 회의: '+(d.getMonth()+1)+'월 '+d.getDate()+'일('+wd+') 저녁미사 후';
-})();
+// 다음 회의일 배지 (전례단·사목평의회·남성총구역)
+updateNextMeet();
 
 // 회의 월 기본값
 document.getElementById('meet-ym').value = ymNow();
@@ -1357,6 +1697,9 @@ document.getElementById('meet-ym').addEventListener('change', loadMeetingForm);
 
 // 출석부 위임 리스너 (표를 다시 그려도 유지된다)
 bindAttendEvents();
+
+// 사목평의회·남성총구역 화면 생성 + 리스너
+buildGroupTabs();
 
 // Firebase 초기화 (자동 연결 + 로그인 유지)
 initFirebase();
