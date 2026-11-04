@@ -5,8 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>교하성당 단체 회의록</title>
 <!-- 아이콘 (십자가 문양, 데이터 URI — 별도 파일 불필요) -->
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%236E1E2B'/%3E%3Cpath d='M32 10v44M18 26h28' stroke='%23E9C46A' stroke-width='7' stroke-linecap='round'/%3E%3C/svg%3E">
-<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%236E1E2B'/%3E%3Cpath d='M32 10v44M18 26h28' stroke='%23E9C46A' stroke-width='7' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <!-- CDN 스크립트는 integrity(SRI) 해시로 고정: 내용이 한 글자라도 바뀌면 브라우저가 실행을 거부한다.
      라이브러리 버전을 올릴 때는 URL과 해시를 함께 갱신해야 한다. -->
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js" integrity="sha384-EnyY0/GSHQGSxSgMwaIPzSESbqoOLSexfnSMN2AP+39Ckmn92stwABZynq1JyzdT" crossorigin="anonymous"></script>
@@ -63,6 +65,34 @@ header.no-subnav{padding-bottom:16px}
 .file-row:last-child{border-bottom:none}
 .file-row .fname{flex:1;min-width:160px;word-break:break-all}
 .file-row .fmeta{font-size:12px;color:var(--muted)}
+
+/* 회의록 사진 */
+.ph-strip{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+.ph-wrap{position:relative;display:inline-block}
+.ph{width:96px;height:96px;object-fit:cover;border-radius:6px;border:1px solid var(--line);background:#eee;cursor:zoom-in;display:block}
+.ph.err{cursor:default}
+.ph-x{position:absolute;top:2px;right:2px;width:22px;height:22px;border:none;border-radius:50%;background:rgba(0,0,0,.65);color:#fff;font-size:12px;line-height:22px;padding:0;cursor:pointer}
+#ph-lb{position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:9999;display:none;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:12px}
+#ph-lb.on{display:flex}
+#ph-lb img{max-width:96vw;max-height:80vh;object-fit:contain;border-radius:4px;background:#222}
+#ph-lb .cap{color:#eee;font-size:13px;text-align:center}
+#ph-lb .bar{display:flex;gap:8px}
+@media print{.ph{width:140px;height:140px}.ph-x,#ph-lb{display:none!important}}
+
+/* 일정 달력 */
+.cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));border-top:1px solid var(--line);border-left:1px solid var(--line)}
+.cal-dow{text-align:center;font-size:12px;font-weight:700;padding:4px 0;background:#f3ede0;border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
+.cal-cell{min-height:96px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:3px;cursor:pointer;overflow:hidden;background:#fff;min-width:0}
+.cal-cell.out{background:#f6f2ea;opacity:.65}
+.cal-cell.sel{outline:2px solid var(--gold-l);outline-offset:-2px}
+.cal-d{font-size:12px;font-weight:700;display:inline-block;padding:0 5px;border-radius:10px}
+.cal-cell.today .cal-d{background:var(--wine);color:#fff}
+.sun{color:#c0392b}.sat{color:#2b6cb0}
+.cal-cell.today .cal-d.sun,.cal-cell.today .cal-d.sat{color:#fff}
+.cal-chip{display:block;border-left:3px solid var(--c);background:#f3ede0;font-size:11px;padding:1px 4px;margin-top:2px;border-radius:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#333;cursor:pointer}
+.cal-chip.reg{border-left-style:dashed;background:#fff;color:var(--muted);cursor:default}
+.cal-more{font-size:11px;color:var(--muted);margin-top:2px}
+@media(max-width:600px){.cal-cell{min-height:70px;padding:2px}.cal-chip{font-size:10px;padding:1px 2px}.cal-d{padding:0 3px}}
 .btn{font-family:inherit;font-size:13.5px;font-weight:500;padding:8px 14px;border-radius:8px;border:1px solid var(--line);
   background:#fff;color:var(--ink);cursor:pointer}
 .btn:hover{border-color:var(--gold)}
@@ -143,6 +173,7 @@ td input{width:100%;border:none;padding:2px;background:transparent}
     <button class="on" data-cat="liturgy" onclick="showCat('liturgy')">전례단</button>
     <button data-cat="pastoral" onclick="showCat('pastoral')">사목평의회</button>
     <button data-cat="men" onclick="showCat('men')">남성총구역</button>
+    <button data-cat="calendar" onclick="showCat('calendar')">📅 일정</button>
   </nav>
   <nav id="main-nav" style="display:none">
     <button class="on" data-tab="meeting" onclick="showTab('meeting')">회의내용</button>
@@ -199,6 +230,15 @@ td input{width:100%;border:none;padding:2px;background:transparent}
     <div class="row" style="margin-top:8px">
       <button class="btn btn-p" onclick="saveMeeting()">회의록 저장</button>
       <span class="status" id="meet-status"></span>
+    </div>
+    <div style="margin-top:12px;padding-top:10px;border-top:1px dashed var(--line)">
+      <div class="row">
+        <b style="font-size:14px;color:var(--wine)">📷 사진 첨부</b>
+        <input type="file" id="meet-photo" accept="image/*" multiple style="max-width:260px">
+        <span class="status" id="meet-photo-status"></span>
+      </div>
+      <div class="hint" style="margin:4px 0 8px">선택한 월의 회의록에 붙습니다 (한 번에 여러 장 가능, 월 최대 20장). 사진은 자동으로 줄여서 저장하고, 누르면 크게 보입니다.</div>
+      <div id="meet-photos" class="ph-strip"></div>
     </div>
   </div>
   <div class="card">
@@ -350,6 +390,7 @@ td input{width:100%;border:none;padding:2px;background:transparent}
 <!-- ═══════ 사목평의회 / 남성총구역 (같은 틀 — 내용은 JS 가 채운다) ═══════ -->
 <section class="tab" id="tab-pastoral"></section>
 <section class="tab" id="tab-men"></section>
+<section class="tab" id="tab-calendar"></section>
 
 </div><!-- /#app-content -->
 
@@ -369,7 +410,10 @@ let S = {
   attendance: {},    // "YYYY": { name: {1:'O'|'X'|'', ...12} }
   roster: [],        // 출석부 이름 목록
   eventDates: {},     // { "YYYY": {easter:'YYYY-MM-DD', christmas:'YYYY-MM-DD'} }
-  groups: {}         // 사목평의회·남성총구역: { 키: {meetings, files} } — 아래 '단체 회의' 참고
+  groups: {},        // 사목평의회·남성총구역: { 키: {meetings, files} } — 아래 '단체 회의' 참고
+  events: {},        // 일정 달력: { id: {date,start,end,group,title,place,memo,gid,dirty,...} } — 아래 '일정 달력' 참고
+  evDel: {},         // 구글에서도 지워야 할 일정 id
+  gcal: {}           // 구글 캘린더 동기화 설정 { clientId, calId }
 };
 
 let finYM  = ymNow();
@@ -382,7 +426,7 @@ function saveLocal(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(S)); }cat
 function persist(){ saveLocal(); scheduleCloudSave(); }
 function restore(){
   try{ const d = localStorage.getItem(LS_KEY); if(d) S = Object.assign(S, JSON.parse(d)); }catch(e){}
-  groupsEnsure();
+  groupsEnsure(); calEnsure();
 }
 
 /* ── 유틸 ── */
@@ -437,18 +481,25 @@ function loadMeetingForm(){
   document.getElementById('meet-count').value = rec?.count ?? '';
   document.getElementById('meet-content').value = rec?.content || '';
   document.getElementById('meet-badge').textContent = m+'월 넷째 화요일: '+fmtDate(t4);
+  renderMeetPhotos();
 }
-function saveMeeting(){
-  const ym = document.getElementById('meet-ym').value;
-  if(!ym){ alert('회의 월을 선택하세요'); return; }
-  S.meetings[ym] = {
+function buildMeetRec(ym){
+  const old = S.meetings[ym];
+  const r = {
     date:  document.getElementById('meet-date').value,
     place: document.getElementById('meet-place').value.trim(),
     count: document.getElementById('meet-count').value,
     content: document.getElementById('meet-content').value,
     savedAt: new Date().toISOString()
   };
-  persist(); renderMeetings();
+  if(old && old.photos) r.photos = old.photos;   // 글을 다시 저장해도 첨부 사진 목록은 그대로 둔다
+  return r;
+}
+function saveMeeting(){
+  const ym = document.getElementById('meet-ym').value;
+  if(!ym){ alert('회의 월을 선택하세요'); return; }
+  S.meetings[ym] = buildMeetRec(ym);
+  persist(); renderMeetings(); renderMeetPhotos();
   const st = document.getElementById('meet-status');
   st.textContent = '✅ 저장됨'; st.style.color='var(--ok)';
   setTimeout(()=>st.textContent='',2000);
@@ -466,11 +517,185 @@ function renderMeetings(){
         <button class="btn btn-sm no-print" onclick="editMeeting('${ym}')">수정</button>
         <button class="btn btn-sm btn-danger no-print" onclick="delMeeting('${ym}')">삭제</button></div>
       <pre>${esc(r.content)}</pre>
+      ${meetPhotoStrip(ym, false)}
     </div>`;
   }).join('');
+  hydratePhotos(box);
 }
 function editMeeting(ym){ document.getElementById('meet-ym').value = ym; loadMeetingForm(); window.scrollTo({top:0,behavior:'smooth'}); }
-function delMeeting(ym){ if(confirm(ym+' 회의록을 삭제할까요?')){ delete S.meetings[ym]; persist(); renderMeetings(); } }
+function delMeeting(ym){
+  const ph = meetPhotos(ym);
+  if(!confirm(ym+' 회의록을 삭제할까요?'+(ph.length?' (첨부 사진 '+ph.length+'장도 함께 삭제됩니다)':''))) return;
+  if(ph.length && fbDB && firebase.auth().currentUser){
+    ph.forEach(p=>{ [p.id, p.id+'t'].forEach(k=>{ delete photoUrls[k]; fbDB.ref(GRP_FILE_PATH+'/'+k).remove().catch(()=>{}); }); });
+  }
+  delete S.meetings[ym]; persist(); renderMeetings(); renderMeetPhotos();
+}
+
+/* ── 전례단 회의록 사진 ──
+   목록(메타데이터)은 S.meetings[ym].photos, 사진 본문은 단체 자료와 같은 jeonrye/meetingFiles 에 둔다.
+   사진은 올리기 전에 브라우저에서 줄이고(긴 변 1600px JPEG), 미리보기용 작은 사진(320px)을 id+'t' 로 따로 둔다. */
+const PHOTO_MAX = 20;
+const photoUrls = {};   // 이미 받은 사진의 blob 주소 캐시
+function meetPhotos(ym){
+  const v = S.meetings[ym] && S.meetings[ym].photos;
+  return Array.isArray(v) ? v.filter(Boolean) : Object.values(v || {});
+}
+function meetPhotoStrip(ym, canDel){
+  const list = meetPhotos(ym);
+  if(!list.length) return '';
+  return '<div class="ph-strip">' + list.map(p=>
+    '<span class="ph-wrap"><img class="ph" data-pid="'+esc(p.id)+'" data-ym="'+esc(ym)+'" alt="'+esc(p.name)+'" title="'+esc(p.name)+'">'
+    + (canDel ? '<button class="ph-x no-print" data-photo-del="'+esc(p.id)+'" data-ym="'+esc(ym)+'" title="사진 삭제">✕</button>' : '')
+    + '</span>').join('') + '</div>';
+}
+function renderMeetPhotos(){
+  const box = document.getElementById('meet-photos'); if(!box) return;
+  const ym = document.getElementById('meet-ym').value;
+  const html = ym ? meetPhotoStrip(ym, true) : '';
+  box.innerHTML = html ? html.replace('<div class="ph-strip">','').replace(/<\/div>$/,'') : '<span class="hint">첨부된 사진이 없습니다.</span>';
+  hydratePhotos(box);
+}
+async function photoUrl(key){
+  if(photoUrls[key]) return photoUrls[key];
+  const snap = await fbDB.ref(GRP_FILE_PATH+'/'+key).get();
+  if(!snap.exists()) throw new Error('서버에서 사진을 찾지 못했습니다');
+  const u = URL.createObjectURL(b64ToBlob(snap.val().data, 'image/jpeg'));   // 형식은 저장값을 믿지 않고 항상 JPEG 로
+  photoUrls[key] = u;
+  return u;
+}
+function hydratePhotos(root){
+  // 썸네일(320px)이라 작아서 바로 불러온다. 월별 최대 20장이라 한꺼번에 받아도 부담이 없다.
+  if(!fbDB || !firebase.auth().currentUser) return;
+  Array.from(root.querySelectorAll('img.ph[data-pid]:not([data-ok])')).forEach(async im=>{
+    im.dataset.ok = '1';
+    try{ im.src = await photoUrl(im.dataset.pid + 't'); }
+    catch(e){ im.classList.add('err'); im.alt = '사진을 불러오지 못했습니다'; }
+  });
+}
+async function photoResize(file, maxSide, q){
+  const url = URL.createObjectURL(file);
+  try{
+    const img = await new Promise((res, rej)=>{
+      const im = new Image();
+      im.onload = ()=>res(im);
+      im.onerror = ()=>rej(new Error('사진을 열 수 없습니다 (JPG·PNG 등으로 올려 주세요)'));
+      im.src = url;
+    });
+    const w0 = img.naturalWidth, h0 = img.naturalHeight;
+    if(!w0 || !h0) throw new Error('사진을 열 수 없습니다');
+    const k = Math.min(1, maxSide / Math.max(w0, h0));
+    const w = Math.max(1, Math.round(w0*k)), h = Math.max(1, Math.round(h0*k));
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, w, h); x.drawImage(img, 0, 0, w, h);
+    const blob = await new Promise(r=>c.toBlob(r, 'image/jpeg', q));
+    if(!blob) throw new Error('사진 변환에 실패했습니다');
+    return { blob:blob, w:w, h:h };
+  }finally{ URL.revokeObjectURL(url); }
+}
+async function uploadMeetPhotos(input){
+  const files = Array.from(input.files || []);
+  input.value = '';
+  if(!files.length) return;
+  const st = 'meet-photo-status';
+  const ym = document.getElementById('meet-ym').value;
+  if(!ym){ alert('회의 월을 먼저 선택하세요'); return; }
+  if(!grpReady(st)) return;
+  if(!S.meetings[ym]) S.meetings[ym] = buildMeetRec(ym);   // 아직 저장 전이면 지금 입력한 글과 함께 기록을 만든다
+  let ok = 0; const fails = [];
+  for(let i=0; i<files.length; i++){
+    const f = files[i];
+    grpMsg(st, '올리는 중 ('+(i+1)+'/'+files.length+') '+f.name, 'info');
+    if(!/^image/.test(f.type) && !/[.](jpe?g|png|gif|webp|bmp)$/i.test(f.name)){ fails.push(f.name+': 사진 파일이 아닙니다'); continue; }
+    if(meetPhotos(ym).length >= PHOTO_MAX){ fails.push(f.name+': 한 달에 '+PHOTO_MAX+'장까지입니다'); continue; }
+    if(f.size > 30*1048576){ fails.push(f.name+': 30MB를 넘습니다'); continue; }
+    try{
+      const full = await photoResize(f, 1600, 0.82);
+      const thumb = await photoResize(f, 320, 0.7);
+      const dFull = await readAsBase64(full.blob), dThumb = await readAsBase64(thumb.blob);
+      if(dFull.length > 9000000) throw new Error('변환 후에도 너무 큽니다');
+      const id = Date.now().toString(36) + Math.random().toString(36).slice(2,8);
+      // 본문을 먼저 올리고, 둘 다 성공했을 때만 목록에 올린다
+      await fbDB.ref(GRP_FILE_PATH+'/'+id).set({name:f.name, type:'image/jpeg', size:full.blob.size, data:dFull});
+      try{ await fbDB.ref(GRP_FILE_PATH+'/'+id+'t').set({name:f.name, type:'image/jpeg', size:thumb.blob.size, data:dThumb}); }
+      catch(e){ fbDB.ref(GRP_FILE_PATH+'/'+id).remove().catch(()=>{}); throw e; }
+      const list = meetPhotos(ym).slice();
+      list.push({id:id, name:f.name, size:full.blob.size, w:full.w, h:full.h, uploadedAt:new Date().toISOString(), by:firebase.auth().currentUser.email});
+      S.meetings[ym].photos = list;
+      persist();
+      ok++;
+    }catch(e){ fails.push(f.name+': '+grpErr(e)); }
+  }
+  renderMeetPhotos(); renderMeetings();
+  if(fails.length) grpMsg(st, (ok?'✅ '+ok+'장 올림 / ':'')+'❌ '+fails.length+'장 실패 — '+fails.join(' | '), 'bad');
+  else grpMsg(st, '✅ '+ok+'장 올렸습니다', 'ok');
+}
+async function removeMeetPhoto(ym, id){
+  const p = meetPhotos(ym).find(x=>x.id===id); if(!p) return;
+  if(!confirm('"'+p.name+'" 사진을 삭제할까요? 되돌릴 수 없습니다.')) return;
+  if(!grpReady('meet-photo-status')) return;
+  try{
+    await fbDB.ref(GRP_FILE_PATH+'/'+id).remove();
+    await fbDB.ref(GRP_FILE_PATH+'/'+id+'t').remove();
+  }catch(e){ alert('삭제 실패: '+grpErr(e)); return; }
+  delete photoUrls[id]; delete photoUrls[id+'t'];
+  const rest = meetPhotos(ym).filter(x=>x.id!==id);
+  if(rest.length) S.meetings[ym].photos = rest; else delete S.meetings[ym].photos;
+  persist(); renderMeetPhotos(); renderMeetings();
+}
+/* 크게 보기 */
+let lbList = [], lbIdx = 0;
+function lbEnsure(){
+  let lb = document.getElementById('ph-lb'); if(lb) return lb;
+  lb = document.createElement('div'); lb.id = 'ph-lb';
+  lb.innerHTML = '<img alt=""><div class="cap"></div><div class="bar"><button class="btn" data-lb="prev">◀</button><button class="btn" data-lb="dl">⬇ 저장</button><button class="btn" data-lb="close">닫기</button><button class="btn" data-lb="next">▶</button></div>';
+  document.body.appendChild(lb);
+  lb.addEventListener('click', e=>{
+    const b = e.target.closest('[data-lb]');
+    if(b){ const a = b.dataset.lb;
+      if(a==='close') lbClose(); else if(a==='prev') lbShow(lbIdx-1); else if(a==='next') lbShow(lbIdx+1); else if(a==='dl') lbDownload();
+      return; }
+    if(e.target === lb) lbClose();
+  });
+  document.addEventListener('keydown', e=>{
+    if(!lb.classList.contains('on')) return;
+    if(e.key==='Escape') lbClose(); else if(e.key==='ArrowLeft') lbShow(lbIdx-1); else if(e.key==='ArrowRight') lbShow(lbIdx+1);
+  });
+  return lb;
+}
+function lbClose(){ const lb = document.getElementById('ph-lb'); if(lb) lb.classList.remove('on'); }
+async function lbShow(i){
+  if(!lbList.length) return;
+  lbIdx = (i + lbList.length) % lbList.length;
+  const p = lbList[lbIdx], lb = lbEnsure();
+  const img = lb.querySelector('img'), cap = lb.querySelector('.cap');
+  lb.classList.add('on'); img.removeAttribute('src'); cap.textContent = '불러오는 중… '+p.name;
+  const mine = lbIdx;
+  try{
+    const u = await photoUrl(p.id);
+    if(mine !== lbIdx) return;   // 그 사이 다른 장으로 넘겼으면 버린다
+    img.src = u; cap.textContent = p.name+' ('+(lbIdx+1)+'/'+lbList.length+')';
+  }catch(e){ cap.textContent = '사진을 불러오지 못했습니다: '+grpErr(e); }
+}
+function lbDownload(){
+  const p = lbList[lbIdx]; if(!p || !photoUrls[p.id]) return;
+  const a = document.createElement('a'); a.href = photoUrls[p.id];
+  a.download = (p.name||'photo').replace(/[.][^.]*$/, '') + '.jpg';
+  document.body.appendChild(a); a.click(); a.remove();
+}
+function bindMeetPhotoEvents(){
+  const t = document.getElementById('tab-meeting');
+  document.getElementById('meet-photo').addEventListener('change', e=>uploadMeetPhotos(e.target));
+  t.addEventListener('click', e=>{
+    const x = e.target.closest('[data-photo-del]');
+    if(x){ removeMeetPhoto(x.dataset.ym, x.dataset.photoDel); return; }
+    const im = e.target.closest('img.ph[data-pid]');
+    if(im && !im.classList.contains('err')){
+      lbList = meetPhotos(im.dataset.ym);
+      lbShow(Math.max(0, lbList.findIndex(p=>p.id===im.dataset.pid)));
+    }
+  });
+}
 
 /* ════════════════════════ 건의사항 ════════════════════════ */
 function addSuggest(){
@@ -1458,6 +1683,452 @@ function buildGroupTabs(){
   });
 }
 
+/* ════════════════════════ 일정 달력 + 구글 캘린더 동기화 ════════════════════════
+   S.events : { id: {id,date,start,end,endDate,group,title,place,memo,updatedAt,dirty,gid,gUpdated} }
+   S.evDel  : { 구글일정id: true }  — 앱에서 지운 일정 중 구글에서도 지워야 할 것
+   S.gcal   : { clientId, calId }   — 구글 OAuth 클라이언트 ID(공개값), 동기화용 보조 캘린더 id
+   start 가 비어 있으면 종일 일정. 구글 쪽은 '교하성당 단체 회의록' 보조 캘린더 하나만 사용한다
+   (권한 범위 calendar.app.created — 개인 기본 캘린더는 건드리지 않는다). */
+const CAL_GROUPS = {
+  liturgy:  { label:'전례단',     color:'#6E1E2B' },
+  pastoral: { label:'사목평의회', color:'#2B6CB0' },
+  men:      { label:'남성총구역', color:'#2F855A' },
+  etc:      { label:'기타',       color:'#B7791F' }
+};
+const CAL_TZ = 'Asia/Seoul';
+const GCAL_SCOPE = 'https://www.googleapis.com/auth/calendar.app.created';
+const GCAL_NAME = '교하성당 단체 회의록';
+const GCAL_API = 'https://www.googleapis.com/calendar/v3/';
+let calYM = ymNow(), calSel = fmtDate(new Date()), calEditId = '';
+let gToken = null, gTokenExp = 0, gSyncing = false, gAutoTimer = null;
+
+/* Firebase 는 빈 객체를 저장하지 않으므로 항상 기본형을 보정한다. */
+function calEnsure(){
+  ['events','evDel','gcal'].forEach(k=>{
+    if(!S[k] || typeof S[k]!=='object' || Array.isArray(S[k])) S[k] = {};
+  });
+}
+function calNewId(){ return 'e' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+function calAddDays(ds, n){
+  const p = ds.split('-').map(Number);
+  const d = new Date(Date.UTC(p[0], p[1]-1, p[2]+n));
+  return d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')+'-'+String(d.getUTCDate()).padStart(2,'0');
+}
+function calPlusHour(t){   // "HH:MM" + 1시간 (자정을 넘으면 23:59)
+  const p = t.split(':').map(Number);
+  const m = p[0]*60 + p[1] + 60;
+  if(m >= 1440) return '23:59';
+  return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
+}
+function calDow(ds){ const p=ds.split('-').map(Number); return new Date(p[0],p[1]-1,p[2]).getDay(); }
+function calLabel(ds){
+  const p = ds.split('-').map(Number);
+  return p[1]+'월 '+p[2]+'일('+['일','월','화','수','목','금','토'][calDow(ds)]+')';
+}
+function calList(){ calEnsure(); return Object.values(S.events).filter(e=>e && e.date); }
+function calSorted(arr){
+  return arr.slice().sort((a,b)=> (a.date+(a.start||'')) < (b.date+(b.start||'')) ? -1 : 1);
+}
+
+/* 정기 회의(계산으로 나오는 일정 — 저장하지 않는다). 회의록에 날짜를 따로 저장했으면 그 날짜를 따른다. */
+function calRegular(ym){
+  const p = ym.split('-').map(Number);
+  const out = [];
+  const lit = S.meetings[ym];
+  out.push({ date: (lit && lit.date) || fmtDate(fourthTuesday(p[0],p[1])), group:'liturgy', title:'전례단 정기회의' });
+  GROUP_KEYS.forEach(k=>{
+    const rec = grp(k).meetings[ym];
+    out.push({ date: (rec && rec.date) || fmtDate(GROUPS[k].fn(p[0],p[1])), group:k, title:GROUPS[k].label+' 정기회의' });
+  });
+  return out.filter(r=>r.date.slice(0,7)===ym);
+}
+
+/* ── 화면 뼈대 ── */
+function buildCalendarTab(){
+  const opts = Object.keys(CAL_GROUPS).map(k=>'<option value="'+k+'">'+CAL_GROUPS[k].label+'</option>').join('');
+  const legend = Object.keys(CAL_GROUPS).map(k=>
+    '<span style="display:inline-flex;align-items:center;gap:4px;margin-right:12px"><i style="width:10px;height:10px;border-radius:2px;background:'+CAL_GROUPS[k].color+';display:inline-block"></i>'+CAL_GROUPS[k].label+'</span>').join('');
+  const dow = ['일','월','화','수','목','금','토'].map((d,i)=>'<div class="cal-dow'+(i===0?' sun':i===6?' sat':'')+'">'+d+'</div>').join('');
+  const tab = document.getElementById('tab-calendar');
+  tab.innerHTML = `
+  <div class="card">
+    <h2>📅 일정 달력 <span class="pill" id="cal-gbadge"></span></h2>
+    <div class="month-nav no-print" style="margin-bottom:8px">
+      <button class="btn" data-act="prev">◀</button>
+      <b id="cal-title"></b>
+      <button class="btn" data-act="next">▶</button>
+      <button class="btn" data-act="today">오늘</button>
+    </div>
+    <div class="cal-grid">${dow}<span id="cal-cells" style="display:contents"></span></div>
+    <div class="hint" style="margin-top:8px">${legend}<span style="color:var(--muted)">점선 = 정기 회의(자동 표시) · 날짜를 누르면 그날 일정을 추가할 수 있습니다</span></div>
+  </div>
+
+  <div class="card no-print">
+    <h2><span id="cal-form-title">일정 추가</span></h2>
+    <div class="row" style="margin-bottom:8px">
+      <input type="date" id="cal-date" title="날짜">
+      <input type="time" id="cal-start" title="시작 시간 (비우면 종일)">
+      <span style="color:var(--muted)">~</span>
+      <input type="time" id="cal-end" title="끝나는 시간">
+      <select id="cal-group">${opts}</select>
+    </div>
+    <div class="row" style="margin-bottom:8px">
+      <input type="text" id="cal-ev-title" placeholder="일정 제목" maxlength="100" style="flex:2;min-width:180px">
+      <input type="text" id="cal-place" placeholder="장소 (선택)" maxlength="100" style="flex:1;min-width:120px">
+    </div>
+    <textarea id="cal-memo" rows="2" placeholder="메모 (선택)" maxlength="1000" style="width:100%;margin-bottom:8px"></textarea>
+    <div class="row">
+      <button class="btn btn-p" data-act="save">💾 저장</button>
+      <button class="btn" data-act="new">새 일정</button>
+      <button class="btn" data-act="del" id="cal-del" style="display:none;color:var(--bad)">삭제</button>
+      <span class="hint" id="cal-msg"></span>
+    </div>
+    <div class="hint" style="margin-top:6px">시작 시간을 비워 두면 종일 일정으로 저장됩니다.</div>
+  </div>
+
+  <div class="card">
+    <h2>이달 일정 목록</h2>
+    <div id="cal-list"></div>
+  </div>
+
+  <div class="card no-print">
+    <h2>🔗 구글 캘린더 동기화 <span class="pill" id="cal-gstate"></span></h2>
+    <div class="hint" style="margin-bottom:8px">구글에 <b>'${GCAL_NAME}'</b> 이라는 별도 캘린더를 만들어 그 안에서만 양방향으로 맞춥니다. 개인 기본 캘린더는 건드리지 않습니다. 정기 회의(점선)는 동기화 대상이 아니고, 직접 저장한 일정만 올라갑니다.</div>
+    <div class="row" style="margin-bottom:8px">
+      <input type="text" id="gcal-client" placeholder="구글 OAuth 클라이언트 ID (…apps.googleusercontent.com)" style="flex:1;min-width:240px" autocomplete="off" spellcheck="false">
+      <button class="btn btn-p" data-act="gsync">🔄 구글 연결 · 지금 동기화</button>
+    </div>
+    <div class="hint" id="cal-gstatus"></div>
+    <details style="margin-top:10px">
+      <summary style="cursor:pointer;font-weight:700;color:var(--wine)">처음 한 번 하는 설정 방법</summary>
+      <ol style="margin:8px 0 0 18px;line-height:1.8;font-size:14px">
+        <li><b>console.cloud.google.com</b> 에서 새 프로젝트를 만듭니다.</li>
+        <li><b>API 및 서비스 → 라이브러리</b>에서 <b>Google Calendar API</b>를 '사용'합니다.</li>
+        <li><b>OAuth 동의 화면</b>: 사용자 유형 <b>외부</b>, 앱 이름·이메일 입력 → <b>범위 추가</b>에 <code>${GCAL_SCOPE}</code> 추가 → <b>테스트 사용자</b>에 동기화할 구글 계정을 추가합니다. (게시 상태는 '테스트' 그대로 두면 됩니다.)</li>
+        <li><b>사용자 인증 정보 → 사용자 인증 정보 만들기 → OAuth 클라이언트 ID → 웹 애플리케이션</b>. <b>승인된 JavaScript 원본</b>에 <code id="cal-origin"></code> 를 넣고 만듭니다.</li>
+        <li>만들어진 <b>클라이언트 ID</b>를 위 칸에 붙여 넣고 <b>구글 연결 · 지금 동기화</b>를 누릅니다. 구글 로그인 창에서 허용하면 끝입니다.</li>
+      </ol>
+      <div class="hint" style="margin-top:6px">연결은 약 1시간 유지됩니다. 그 뒤에는 버튼을 한 번 더 누르면 다시 연결됩니다. 연결돼 있는 동안에는 일정을 저장·삭제할 때 자동으로 구글에 반영됩니다.</div>
+    </details>
+  </div>`;
+  document.getElementById('cal-origin').textContent = location.origin;
+  bindCalendarEvents();
+}
+
+/* ── 그리기 ── */
+function renderCalendar(){
+  calEnsure();
+  const el = document.getElementById('cal-cells'); if(!el) return;
+  const p = calYM.split('-').map(Number);
+  document.getElementById('cal-title').textContent = p[0]+'년 '+p[1]+'월';
+  const first = new Date(p[0], p[1]-1, 1);
+  const start = new Date(p[0], p[1]-1, 1 - first.getDay());
+  const days = new Date(p[0], p[1], 0).getDate();
+  const rows = Math.ceil((first.getDay() + days) / 7);
+  const reg = calRegular(calYM);
+  const all = calList();
+  const today = fmtDate(new Date());
+  let html = '';
+  for(let i=0; i<rows*7; i++){
+    const d = new Date(start.getFullYear(), start.getMonth(), start.getDate()+i);
+    const ds = fmtDate(d);
+    const inMonth = d.getMonth() === p[1]-1;
+    const dw = d.getDay();
+    const evs = calSorted(all.filter(e=>e.date===ds));
+    const regs = reg.filter(r=>r.date===ds);
+    const chips = [];
+    regs.forEach(r=> chips.push('<div class="cal-chip reg" style="--c:'+CAL_GROUPS[r.group].color+'" title="'+esc(r.title)+'">'+esc(r.title)+'</div>'));
+    evs.forEach(e=> chips.push('<div class="cal-chip" data-id="'+esc(e.id)+'" style="--c:'+(CAL_GROUPS[e.group]||CAL_GROUPS.etc).color+'" title="'+esc(e.title)+'">'+(e.start?esc(e.start)+' ':'')+esc(e.title)+'</div>'));
+    const shown = chips.slice(0,3).join('') + (chips.length>3 ? '<div class="cal-more">+'+(chips.length-3)+'건</div>' : '');
+    html += '<div class="cal-cell'+(inMonth?'':' out')+(ds===today?' today':'')+(ds===calSel?' sel':'')+'" data-date="'+ds+'">'
+      + '<span class="cal-d'+(dw===0?' sun':dw===6?' sat':'')+'">'+d.getDate()+'</span>'+shown+'</div>';
+  }
+  el.innerHTML = html;
+
+  /* 이달 목록 */
+  const items = [];
+  reg.forEach(r=> items.push({date:r.date, start:'', group:r.group, title:r.title, reg:true}));
+  all.filter(e=>e.date.slice(0,7)===calYM).forEach(e=> items.push(e));
+  const list = calSorted(items);
+  document.getElementById('cal-list').innerHTML = list.length ? list.map(e=>{
+    const g = CAL_GROUPS[e.group] || CAL_GROUPS.etc;
+    const time = e.start ? e.start + (e.end ? '~'+e.end : '') : '종일';
+    return '<div class="file-row">'
+      + '<b style="min-width:92px">'+calLabel(e.date)+'</b>'
+      + '<span class="fmeta" style="min-width:74px">'+(e.reg?'정기':esc(time))+'</span>'
+      + '<span class="pill" style="background:'+g.color+';color:#fff">'+g.label+'</span>'
+      + '<span class="fname">'+esc(e.title)+(e.place?' <span class="fmeta">· '+esc(e.place)+'</span>':'')+(e.memo?'<div class="fmeta">'+esc(e.memo)+'</div>':'')+'</span>'
+      + (e.reg ? '' : '<button class="btn" data-act="edit" data-id="'+esc(e.id)+'">수정</button>'
+        + (e.gid && !e.dirty ? '<span class="fmeta" title="구글 캘린더와 맞춰짐">☁</span>' : '<span class="fmeta" title="구글에 아직 반영 안 됨">·</span>'))
+      + '</div>';
+  }).join('') : '<div class="hint">이 달에 등록된 일정이 없습니다.</div>';
+  calUpdateGBadge();
+}
+function calUpdateGBadge(){
+  const n = calList().filter(e=>e.dirty || !e.gid).length + Object.keys(S.evDel).length;
+  const b = document.getElementById('cal-gbadge');
+  if(b) b.textContent = n ? '구글 미반영 '+n+'건' : '';
+  const cl = document.getElementById('gcal-client');
+  if(cl && document.activeElement !== cl) cl.value = S.gcal.clientId || '';
+  const st = document.getElementById('cal-gstate');
+  if(st) st.textContent = gTokenValid() ? '연결됨' : '연결 안 됨';
+}
+
+/* ── 입력 폼 ── */
+function calMsg(msg, kind){ grpMsg('cal-msg', msg, kind); }
+function calFillForm(ev, date){
+  calEditId = ev ? ev.id : '';
+  document.getElementById('cal-date').value  = ev ? ev.date : (date || calSel);
+  document.getElementById('cal-start').value = ev ? (ev.start||'') : '';
+  document.getElementById('cal-end').value   = ev ? (ev.end||'') : '';
+  document.getElementById('cal-group').value = ev ? (CAL_GROUPS[ev.group] ? ev.group : 'etc') : 'etc';
+  document.getElementById('cal-ev-title').value = ev ? ev.title : '';
+  document.getElementById('cal-place').value = ev ? (ev.place||'') : '';
+  document.getElementById('cal-memo').value  = ev ? (ev.memo||'') : '';
+  document.getElementById('cal-form-title').textContent = ev ? '일정 수정' : '일정 추가';
+  document.getElementById('cal-del').style.display = ev ? '' : 'none';
+}
+function saveCalEvent(){
+  calEnsure();
+  const date  = document.getElementById('cal-date').value;
+  const start = document.getElementById('cal-start').value;
+  const end   = document.getElementById('cal-end').value;
+  const title = document.getElementById('cal-ev-title').value.trim();
+  if(!date){ calMsg('날짜를 입력하세요','bad'); return; }
+  if(!title){ calMsg('일정 제목을 입력하세요','bad'); return; }
+  if(end && !start){ calMsg('끝나는 시간만 있으면 안 됩니다. 시작 시간도 입력하세요','bad'); return; }
+  if(start && end && end <= start){ calMsg('끝나는 시간이 시작 시간보다 늦어야 합니다','bad'); return; }
+  const old = calEditId ? S.events[calEditId] : null;
+  const ev = Object.assign({}, old || {}, {
+    id: old ? old.id : calNewId(),
+    date: date, start: start, end: end,
+    group: document.getElementById('cal-group').value,
+    title: title,
+    place: document.getElementById('cal-place').value.trim(),
+    memo:  document.getElementById('cal-memo').value.trim(),
+    updatedAt: Date.now(), dirty: true
+  });
+  if(old && old.date !== date) ev.endDate = '';   // 날짜를 옮기면 여러 날 일정의 끝 날짜는 버린다
+  S.events[ev.id] = ev;
+  persist();
+  calSel = date; calYM = date.slice(0,7);
+  calFillForm(null, date);
+  renderCalendar();
+  calMsg(gTokenValid() ? '✅ 저장했습니다 — 구글에 반영 중…' : '✅ 저장했습니다 (구글에는 동기화 버튼을 누르면 반영됩니다)', 'ok');
+  calAutoSync();
+}
+function delCalEvent(){
+  calEnsure();
+  const ev = calEditId ? S.events[calEditId] : null; if(!ev) return;
+  if(!confirm('"'+ev.title+'" 일정을 삭제할까요?'+(ev.gid?'\n(구글 캘린더에서도 삭제됩니다)':''))) return;
+  if(ev.gid) S.evDel[ev.gid] = true;
+  delete S.events[ev.id];
+  persist();
+  calFillForm(null, calSel);
+  renderCalendar();
+  calMsg('삭제했습니다','ok');
+  calAutoSync();
+}
+
+/* ── 구글 캘린더 ── */
+function gTokenValid(){ return !!gToken && Date.now() < gTokenExp; }
+function gMsg(msg, kind){ grpMsg('cal-gstatus', msg, kind); }
+function gLoadGIS(){
+  return new Promise((res, rej)=>{
+    if(window.google && google.accounts && google.accounts.oauth2) return res();
+    const s = document.createElement('script');
+    s.src = 'https://accounts.google.com/gsi/client'; s.async = true;
+    s.onload = ()=>res();
+    s.onerror = ()=>rej(new Error('구글 로그인 모듈을 불러오지 못했습니다. 인터넷 연결을 확인하세요.'));
+    document.head.appendChild(s);
+  });
+}
+async function gAuth(){
+  const cid = (S.gcal.clientId || '').trim();
+  if(!cid) throw new Error('먼저 구글 OAuth 클라이언트 ID를 입력하세요 (아래 설정 방법 참고)');
+  await gLoadGIS();
+  await new Promise((res, rej)=>{
+    const tc = google.accounts.oauth2.initTokenClient({
+      client_id: cid, scope: GCAL_SCOPE,
+      callback: r=>{
+        if(r.error) return rej(new Error('구글 연결 거부/실패: '+r.error));
+        gToken = r.access_token; gTokenExp = Date.now() + ((Number(r.expires_in)||3600) - 60) * 1000;
+        res();
+      },
+      error_callback: e=>rej(new Error('구글 로그인 창이 닫혔거나 차단되었습니다 ('+((e&&e.type)||'오류')+')'))
+    });
+    tc.requestAccessToken();
+  });
+}
+async function gFetch(path, opt){
+  opt = opt || {};
+  const r = await fetch(GCAL_API + path, {
+    method: opt.method || 'GET',
+    headers: { 'Authorization':'Bearer '+gToken, 'Content-Type':'application/json' },
+    body: opt.body ? JSON.stringify(opt.body) : undefined
+  });
+  if(r.status === 204) return null;
+  let j = {}; try{ j = await r.json(); }catch(e){}
+  if(!r.ok){
+    const err = new Error((j.error && j.error.message) || ('HTTP '+r.status));
+    err.status = r.status; throw err;
+  }
+  return j;
+}
+async function gEnsureCal(){
+  const id = S.gcal.calId || '';
+  if(id){
+    try{ await gFetch('calendars/'+encodeURIComponent(id)); return id; }
+    catch(e){ if(e.status !== 404 && e.status !== 410) throw e; }   // 지워졌으면 새로 만든다
+  }
+  const c = await gFetch('calendars', { method:'POST', body:{ summary:GCAL_NAME, timeZone:CAL_TZ } });
+  S.gcal.calId = c.id;
+  /* 새 캘린더에는 예전 일정 id 가 없다 — 앱 일정 전부를 새로 올리도록 표시하고, 옛 삭제 대기는 버린다 */
+  calList().forEach(e=>{ e.gid = ''; e.gUpdated = ''; e.dirty = true; });
+  S.evDel = {};
+  return c.id;
+}
+function gSeoul(iso){   // 어떤 시간대든 한국 시간의 {d:'YYYY-MM-DD', t:'HH:MM'} 로
+  const parts = new Intl.DateTimeFormat('en-CA', { timeZone:CAL_TZ, year:'numeric', month:'2-digit', day:'2-digit',
+    hour:'2-digit', minute:'2-digit', hourCycle:'h23' }).formatToParts(new Date(iso));
+  const o = {}; parts.forEach(x=>{ o[x.type] = x.value; });
+  return { d:o.year+'-'+o.month+'-'+o.day, t:o.hour+':'+o.minute };
+}
+function gFromLocal(e){
+  const g = { summary:e.title, location:e.place||'', description:e.memo||'',
+    extendedProperties:{ private:{ khId:e.id, khGroup:e.group } } };
+  if(!e.start){
+    g.start = { date:e.date };
+    g.end   = { date:calAddDays(e.endDate || e.date, 1) };   // 종일 일정의 끝 날짜는 '다음 날'
+  }else{
+    const en = (e.end && e.end > e.start) ? e.end : calPlusHour(e.start);
+    g.start = { dateTime:e.date+'T'+e.start+':00', timeZone:CAL_TZ };
+    g.end   = { dateTime:e.date+'T'+en+':00',      timeZone:CAL_TZ };
+  }
+  return g;
+}
+function gToLocal(g){
+  const p = (g.extendedProperties && g.extendedProperties.private) || {};
+  const o = { title:g.summary || '(제목 없음)', place:g.location || '', memo:g.description || '',
+    group:CAL_GROUPS[p.khGroup] ? p.khGroup : 'etc', gid:g.id, gUpdated:g.updated, dirty:false };
+  if(g.start && g.start.date){
+    o.date = g.start.date; o.start = ''; o.end = '';
+    const last = calAddDays(g.end.date, -1);
+    o.endDate = last > o.date ? last : '';
+  }else{
+    const s = gSeoul(g.start.dateTime), en = gSeoul(g.end.dateTime);
+    o.date = s.d; o.start = s.t; o.end = (en.d === s.d && en.t > s.t) ? en.t : ''; o.endDate = '';
+  }
+  return o;
+}
+async function calSync(){
+  if(gSyncing) return;
+  gSyncing = true;
+  const btn = document.querySelector('#tab-calendar [data-act="gsync"]');
+  if(btn) btn.disabled = true;
+  const n = { up:0, down:0, del:0 };
+  try{
+    calEnsure();
+    gMsg('동기화 중…');
+    if(!gTokenValid()) await gAuth();
+    const cal = await gEnsureCal();
+    const base = 'calendars/' + encodeURIComponent(cal) + '/events';
+
+    /* 1) 앱에서 지운 일정 → 구글에서 삭제 */
+    for(const gid of Object.keys(S.evDel)){
+      try{ await gFetch(base+'/'+encodeURIComponent(gid), { method:'DELETE' }); }
+      catch(e){ if(e.status !== 404 && e.status !== 410) throw e; }
+      delete S.evDel[gid]; n.del++;
+    }
+
+    /* 2) 구글 → 앱 (앱에서 고치고 아직 못 올린 일정은 앱 쪽이 이긴다) */
+    const items = []; let pt = '';
+    do{
+      const r = await gFetch(base + '?showDeleted=true&maxResults=2500' + (pt ? '&pageToken='+encodeURIComponent(pt) : ''));
+      (r.items || []).forEach(x=>items.push(x)); pt = r.nextPageToken || '';
+    }while(pt);
+    const byGid = {}; calList().forEach(e=>{ if(e.gid) byGid[e.gid] = e; });
+    items.forEach(g=>{
+      if(g.recurrence || g.recurringEventId) return;                  // 반복 일정은 건드리지 않는다
+      const kid = g.extendedProperties && g.extendedProperties.private && g.extendedProperties.private.khId;
+      const loc = byGid[g.id] || (kid && S.events[kid] && !S.events[kid].gid ? S.events[kid] : null);
+      if(g.status === 'cancelled'){
+        if(loc){ if(loc.dirty){ loc.gid = ''; } else { delete S.events[loc.id]; n.down++; } }
+        return;
+      }
+      if(!g.start || !g.end) return;
+      if(!loc){
+        const id = (kid && !S.events[kid]) ? kid : calNewId();
+        S.events[id] = Object.assign({ id:id, updatedAt:Date.now() }, gToLocal(g)); n.down++;
+      }else if(!loc.dirty && loc.gUpdated !== g.updated){
+        Object.assign(loc, gToLocal(g), { id:loc.id, updatedAt:Date.now() }); n.down++;
+      }else if(!loc.gid){ loc.gid = g.id; }
+    });
+
+    /* 3) 앱 → 구글 */
+    for(const e of calSorted(calList())){
+      if(!e.dirty && e.gid) continue;
+      const body = gFromLocal(e); let r;
+      if(e.gid){
+        try{ r = await gFetch(base+'/'+encodeURIComponent(e.gid), { method:'PATCH', body:body }); }
+        catch(err){ if(err.status !== 404 && err.status !== 410) throw err; }
+      }
+      if(!r) r = await gFetch(base, { method:'POST', body:body });
+      e.gid = r.id; e.gUpdated = r.updated; e.dirty = false; n.up++;
+    }
+    persist(); renderCalendar();
+    gMsg('✅ 동기화 완료 — 구글로 '+n.up+'건 · 구글에서 '+n.down+'건 · 삭제 '+n.del+'건 ('+new Date().toLocaleTimeString('ko-KR')+')', 'ok');
+  }catch(err){
+    if(err.status === 401) gToken = null;
+    persist(); renderCalendar();
+    gMsg('❌ 동기화 실패: ' + (err.message || err) + (n.up||n.down||n.del ? ' (일부는 반영됨 — 다시 누르면 이어서 맞춥니다)' : ''), 'bad');
+  }finally{
+    gSyncing = false;
+    if(btn) btn.disabled = false;
+    calUpdateGBadge();
+  }
+}
+/* 연결돼 있을 때만 저장·삭제 직후 자동 반영 (로그인 창은 사용자 클릭 없이는 열 수 없다) */
+function calAutoSync(){
+  if(!gTokenValid()) return;
+  clearTimeout(gAutoTimer);
+  gAutoTimer = setTimeout(calSync, 1200);
+}
+
+/* ── 이벤트 (위임) ── */
+function bindCalendarEvents(){
+  const tab = document.getElementById('tab-calendar');
+  tab.addEventListener('click', ev=>{
+    const chip = ev.target.closest('.cal-chip[data-id]');
+    if(chip){ const e = S.events[chip.dataset.id]; if(e){ calSel = e.date; calFillForm(e); renderCalendar(); document.getElementById('cal-form-title').scrollIntoView({behavior:'smooth', block:'center'}); } return; }
+    const btn = ev.target.closest('[data-act]');
+    if(btn){
+      const act = btn.dataset.act;
+      if(act === 'prev' || act === 'next'){
+        const p = calYM.split('-').map(Number), d = new Date(p[0], p[1]-1 + (act==='next'?1:-1), 1);
+        calYM = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); renderCalendar();
+      }else if(act === 'today'){ calYM = ymNow(); calSel = fmtDate(new Date()); calFillForm(null, calSel); renderCalendar(); }
+      else if(act === 'save') saveCalEvent();
+      else if(act === 'new'){ calFillForm(null, calSel); calMsg(''); }
+      else if(act === 'del') delCalEvent();
+      else if(act === 'edit'){ const e = S.events[btn.dataset.id]; if(e){ calSel = e.date; calFillForm(e); renderCalendar(); document.getElementById('cal-form-title').scrollIntoView({behavior:'smooth', block:'center'}); } }
+      else if(act === 'gsync') calSync();
+      return;
+    }
+    const cell = ev.target.closest('.cal-cell[data-date]');
+    if(cell){
+      calSel = cell.dataset.date;
+      if(calSel.slice(0,7) !== calYM) calYM = calSel.slice(0,7);
+      if(!calEditId) calFillForm(null, calSel); else document.getElementById('cal-date').value = calSel;
+      renderCalendar();
+    }
+  });
+  document.getElementById('gcal-client').addEventListener('change', e=>{
+    calEnsure(); S.gcal.clientId = e.target.value.trim(); gToken = null; persist(); calUpdateGBadge();
+  });
+  calFillForm(null, calSel);
+}
+
 /* ════════════════════════ Firebase 저장/자동 동기화 ════════════════════════ */
 // 코드에 직접 심어둔 기본 설정 — 매번 붙여넣지 않아도 자동으로 연결됩니다.
 // (apiKey는 비밀번호가 아니라 프로젝트 식별용 값이라 코드에 있어도 안전합니다.
@@ -1552,7 +2223,7 @@ function clearLocalData(){
   cloudLoaded = false;
   savedSeq = editSeq;
   try{ localStorage.removeItem(LS_KEY); }catch(e){}
-  S = { meetings:{}, suggestions:[], finance:{}, members:[], attendance:{}, roster:[], eventDates:{}, groups:{} };
+  S = { meetings:{}, suggestions:[], finance:{}, members:[], attendance:{}, roster:[], eventDates:{}, groups:{}, events:{}, evDel:{}, gcal:{} };
   finYM = ymNow();
   renderAll();
 }
@@ -1601,13 +2272,14 @@ async function cloudLoad(){
     if(snap.exists()){
       const loaded = snap.val();
       loadingFromCloud = true;
-      ['meetings','suggestions','finance','members','attendance','roster','eventDates','groups'].forEach(k=>{
+      ['meetings','suggestions','finance','members','attendance','roster','eventDates','groups','events','evDel','gcal'].forEach(k=>{
         if(loaded[k]!==undefined) S[k]=loaded[k];
       });
       // Firebase는 빈 배열/객체를 저장하지 않으므로 기본형 보정
       S.suggestions = S.suggestions||[]; S.members = S.members||[]; S.roster = S.roster||[];
       S.meetings = S.meetings||{}; S.finance = S.finance||{}; S.attendance = S.attendance||{};
       S.eventDates = S.eventDates||{};
+      calEnsure();
       Object.values(S.finance).forEach(f=>{ f.rows = f.rows||[]; });
       saveLocal();
       loadingFromCloud = false;
@@ -1684,6 +2356,7 @@ function renderAll(){
   groupsEnsure();
   renderMeetings(); renderSuggest(); renderFinance(); renderDues(); renderMembers(); renderAttend(); loadMeetingForm();
   GROUP_KEYS.forEach(k=>{ renderGroup(k); loadGroupForm(k); });
+  renderCalendar();
 }
 
 restore();
@@ -1700,6 +2373,12 @@ bindAttendEvents();
 
 // 사목평의회·남성총구역 화면 생성 + 리스너
 buildGroupTabs();
+
+// 일정 달력 화면 생성 + 리스너
+buildCalendarTab();
+
+// 전례단 회의록 사진 첨부 리스너
+bindMeetPhotoEvents();
 
 // Firebase 초기화 (자동 연결 + 로그인 유지)
 initFirebase();
