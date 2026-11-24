@@ -243,6 +243,15 @@ td input{width:100%;border:none;padding:2px;background:transparent}
       <div class="hint" style="margin:4px 0 8px">선택한 월의 회의록에 붙습니다 (한 번에 여러 장 가능, 월 최대 20장). 사진은 자동으로 줄여서 저장하고, 누르면 크게 보입니다.</div>
       <div id="meet-photos" class="ph-strip"></div>
     </div>
+    <div style="margin-top:12px;padding-top:10px;border-top:1px dashed var(--line)">
+      <div class="row">
+        <b style="font-size:14px;color:var(--wine)">📊 전례표 첨부 (엑셀)</b>
+        <input type="file" id="meet-file" accept=".xlsx,.xls,.xlsm,.csv" multiple style="max-width:260px">
+        <span class="status" id="meet-file-status"></span>
+      </div>
+      <div class="hint" style="margin:4px 0 8px">선택한 월의 회의록에 붙습니다. 엑셀(xlsx·xls·xlsm)과 csv 파일, 한 파일 7MB까지 올릴 수 있습니다.</div>
+      <div id="meet-files"></div>
+    </div>
   </div>
   <div class="card">
     <h2>📚 지난 회의록 <button class="btn btn-sm no-print" style="margin-left:auto" onclick="window.print()">🖨 인쇄</button></h2>
@@ -503,6 +512,7 @@ function buildMeetRec(ym){
     savedAt: new Date().toISOString()
   };
   if(old && old.photos) r.photos = old.photos;   // 글을 다시 저장해도 첨부 사진 목록은 그대로 둔다
+  if(old && old.files)  r.files  = old.files;    // 첨부 전례표(엑셀) 목록도 마찬가지
   return r;
 }
 function saveMeeting(){
@@ -528,16 +538,21 @@ function renderMeetings(){
         <button class="btn btn-sm btn-danger no-print" onclick="delMeeting('${ym}')">삭제</button></div>
       <pre>${esc(r.content)}</pre>
       ${meetPhotoStrip(ym, false)}
+      ${meetFiles(ym).length ? '<div style="margin-top:6px">'+meetFileRows(ym, false)+'</div>' : ''}
     </div>`;
   }).join('');
   hydratePhotos(box);
 }
 function editMeeting(ym){ document.getElementById('meet-ym').value = ym; loadMeetingForm(); window.scrollTo({top:0,behavior:'smooth'}); }
 function delMeeting(ym){
-  const ph = meetPhotos(ym);
-  if(!confirm(ym+' 회의록을 삭제할까요?'+(ph.length?' (첨부 사진 '+ph.length+'장도 함께 삭제됩니다)':''))) return;
+  const ph = meetPhotos(ym), mf = meetFiles(ym);
+  const att = [ph.length ? '사진 '+ph.length+'장' : '', mf.length ? '전례표 '+mf.length+'개' : ''].filter(Boolean).join(', ');
+  if(!confirm(ym+' 회의록을 삭제할까요?'+(att?' (첨부 '+att+'도 함께 삭제됩니다)':''))) return;
   if(ph.length && fbDB && firebase.auth().currentUser){
     ph.forEach(p=>{ [p.id, p.id+'t'].forEach(k=>{ delete photoUrls[k]; fbDB.ref(GRP_FILE_PATH+'/'+k).remove().catch(()=>{}); }); });
+  }
+  if(mf.length && fbDB && firebase.auth().currentUser){
+    mf.forEach(f=>fbDB.ref(GRP_FILE_PATH+'/'+f.id).remove().catch(()=>{}));
   }
   delete S.meetings[ym]; persist(); renderMeetings(); renderMeetPhotos();
 }
@@ -565,6 +580,7 @@ function renderMeetPhotos(){
   const html = ym ? meetPhotoStrip(ym, true) : '';
   box.innerHTML = html ? html.replace('<div class="ph-strip">','').replace(/<\/div>$/,'') : '<span class="hint">첨부된 사진이 없습니다.</span>';
   hydratePhotos(box);
+  renderMeetFiles();   // 사진을 다시 그리는 모든 곳(월 변경·저장·삭제)에서 전례표 목록도 함께 갱신
 }
 async function photoUrl(key){
   if(photoUrls[key]) return photoUrls[key];
@@ -653,6 +669,93 @@ async function removeMeetPhoto(ym, id){
   if(rest.length) S.meetings[ym].photos = rest; else delete S.meetings[ym].photos;
   persist(); renderMeetPhotos(); renderMeetings();
 }
+
+/* ── 전례단 회의록 전례표(엑셀) 첨부 ──
+   사진과 같은 방식: 목록(메타데이터)은 S.meetings[ym].files, 파일 본문(base64)은 jeonrye/meetingFiles/{id}.
+   엑셀은 손대지 않고 원본 그대로 저장해 받을 때도 같은 파일이 나온다. */
+const MEET_FILE_EXT = ['xlsx','xls','xlsm','csv'];
+function meetFiles(ym){
+  const v = S.meetings[ym] && S.meetings[ym].files;
+  return Array.isArray(v) ? v.filter(Boolean) : Object.values(v || {});
+}
+function meetFileRows(ym, canDel){
+  return meetFiles(ym).map(f=>`<div class="file-row">
+      <span class="fname">📊 ${esc(f.name)}</span>
+      <span class="fmeta">${fmtSize(f.size)} · ${esc(String(f.uploadedAt||'').slice(0,10))}</span>
+      <button class="btn btn-sm no-print" data-mfile-dl="${esc(f.id)}" data-ym="${esc(ym)}">다운로드</button>
+      ${canDel ? `<button class="btn btn-sm btn-danger no-print" data-mfile-rm="${esc(f.id)}" data-ym="${esc(ym)}">삭제</button>` : ''}
+    </div>`).join('');
+}
+function renderMeetFiles(){
+  const box = document.getElementById('meet-files'); if(!box) return;
+  const ym = document.getElementById('meet-ym').value;
+  const html = ym ? meetFileRows(ym, true) : '';
+  box.innerHTML = html || '<span class="hint">첨부된 전례표가 없습니다.</span>';
+}
+async function uploadMeetFiles(input){
+  const files = Array.from(input.files || []);
+  input.value = '';   // 같은 파일을 다시 고를 수 있도록
+  if(!files.length) return;
+  const st = 'meet-file-status';
+  const ym = document.getElementById('meet-ym').value;
+  if(!ym){ alert('회의 월을 먼저 선택하세요'); return; }
+  if(!grpReady(st)) return;
+  if(!S.meetings[ym]) S.meetings[ym] = buildMeetRec(ym);   // 아직 저장 전이면 지금 입력한 글과 함께 기록을 만든다
+  let ok = 0; const fails = [];
+  for(let i=0; i<files.length; i++){
+    const f = files[i];
+    grpMsg(st, '올리는 중 ('+(i+1)+'/'+files.length+') '+f.name, 'info');
+    const dot = f.name.lastIndexOf('.');
+    const ext = dot<0 ? '' : f.name.slice(dot+1).toLowerCase();
+    if(!MEET_FILE_EXT.includes(ext)){ fails.push(f.name+': 엑셀(xlsx·xls·xlsm)이나 csv 파일만 올릴 수 있습니다'); continue; }
+    if(f.size === 0){ fails.push(f.name+': 빈 파일'); continue; }
+    if(f.size > GRP_MAX_BYTES){ fails.push(f.name+': '+fmtSize(f.size)+' — 7MB를 넘습니다'); continue; }
+    try{
+      const data = await readAsBase64(f);
+      const id = Date.now().toString(36) + Math.random().toString(36).slice(2,8);
+      const type = f.type || 'application/octet-stream';
+      // 본문을 먼저 올리고, 성공했을 때만 목록에 올린다
+      await fbDB.ref(GRP_FILE_PATH+'/'+id).set({name:f.name, type, size:f.size, data});
+      const list = meetFiles(ym).slice();
+      list.push({id, name:f.name, type, size:f.size, uploadedAt:new Date().toISOString(), by:firebase.auth().currentUser.email});
+      S.meetings[ym].files = list;
+      persist();
+      ok++;
+    }catch(e){ fails.push(f.name+': '+grpErr(e)); }
+  }
+  renderMeetFiles(); renderMeetings();
+  if(fails.length) grpMsg(st, (ok?'✅ '+ok+'개 올림 / ':'')+'❌ '+fails.length+'개 실패 — '+fails.join(' | '), 'bad');
+  else grpMsg(st, '✅ '+ok+'개 올렸습니다', 'ok');
+}
+async function downloadStoredFile(id, name, btn){
+  if(!fbDB || !firebase.auth().currentUser){ alert('로그인 후 받을 수 있습니다'); return; }
+  const label = btn ? btn.textContent : '';
+  if(btn){ btn.disabled = true; btn.textContent = '받는 중...'; }
+  try{
+    const snap = await fbDB.ref(GRP_FILE_PATH+'/'+id).get();
+    if(!snap.exists()) throw new Error('서버에서 파일을 찾지 못했습니다');
+    const v = snap.val();
+    const url = URL.createObjectURL(b64ToBlob(v.data, v.type));
+    const a = document.createElement('a');
+    a.href = url; a.download = name || v.name || 'file';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 10000);
+  }catch(e){
+    alert('다운로드 실패: ' + grpErr(e));
+  }finally{
+    if(btn){ btn.disabled = false; btn.textContent = label; }
+  }
+}
+async function removeMeetFile(ym, id){
+  const f = meetFiles(ym).find(x=>x.id===id); if(!f) return;
+  if(!confirm('"'+f.name+'" 파일을 삭제할까요? 되돌릴 수 없습니다.')) return;
+  if(!grpReady('meet-file-status')) return;
+  try{ await fbDB.ref(GRP_FILE_PATH+'/'+id).remove(); }
+  catch(e){ alert('삭제 실패: '+grpErr(e)); return; }
+  const rest = meetFiles(ym).filter(x=>x.id!==id);
+  if(rest.length) S.meetings[ym].files = rest; else delete S.meetings[ym].files;
+  persist(); renderMeetFiles(); renderMeetings();
+}
 /* 크게 보기 */
 let lbList = [], lbIdx = 0;
 function lbEnsure(){
@@ -696,7 +799,16 @@ function lbDownload(){
 function bindMeetPhotoEvents(){
   const t = document.getElementById('tab-meeting');
   document.getElementById('meet-photo').addEventListener('change', e=>uploadMeetPhotos(e.target));
+  document.getElementById('meet-file').addEventListener('change', e=>uploadMeetFiles(e.target));
   t.addEventListener('click', e=>{
+    const dl = e.target.closest('[data-mfile-dl]');
+    if(dl){
+      const f = meetFiles(dl.dataset.ym).find(x=>x.id===dl.dataset.mfileDl);
+      if(f) downloadStoredFile(f.id, f.name, dl);
+      return;
+    }
+    const rm = e.target.closest('[data-mfile-rm]');
+    if(rm){ removeMeetFile(rm.dataset.ym, rm.dataset.mfileRm); return; }
     const x = e.target.closest('[data-photo-del]');
     if(x){ removeMeetPhoto(x.dataset.ym, x.dataset.photoDel); return; }
     const im = e.target.closest('img.ph[data-pid]');
@@ -1698,23 +1810,7 @@ async function uploadGroupFiles(k, input){
 }
 async function downloadGroupFile(k, ym, id, btn){
   const meta = grpFiles(k, ym).find(f=>f.id===id); if(!meta) return;
-  if(!fbDB || !firebase.auth().currentUser) return;
-  const label = btn ? btn.textContent : '';
-  if(btn){ btn.disabled = true; btn.textContent = '받는 중...'; }
-  try{
-    const snap = await fbDB.ref(GRP_FILE_PATH+'/'+id).get();
-    if(!snap.exists()) throw new Error('서버에서 파일을 찾지 못했습니다');
-    const v = snap.val();
-    const url = URL.createObjectURL(b64ToBlob(v.data, v.type));
-    const a = document.createElement('a');
-    a.href = url; a.download = meta.name || v.name || 'file';
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(()=>URL.revokeObjectURL(url), 10000);
-  }catch(e){
-    alert('다운로드 실패: ' + grpErr(e));
-  }finally{
-    if(btn){ btn.disabled = false; btn.textContent = label; }
-  }
+  return downloadStoredFile(id, meta.name, btn);
 }
 async function removeGroupFile(k, ym, id){
   const meta = grpFiles(k, ym).find(f=>f.id===id); if(!meta) return;
