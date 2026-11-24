@@ -51,7 +51,32 @@ input,select,textarea{font-family:inherit;font-size:14px;padding:8px 10px;border
 input:focus,select:focus,textarea:focus{outline:2px solid var(--gold-l)}
 textarea{width:100%;min-height:110px;line-height:1.65;resize:vertical}
 /* 회의록 입력칸: 화면 높이의 약 60%로 넓게 (길게 쓰면 스크롤, 아래 모서리를 끌어 더 키울 수도 있음) */
-#meet-content,.meet-big{height:60vh;min-height:380px;font-size:15.5px;line-height:1.75;padding:12px 14px}
+/* 서식 편집기 (굵게·색깔 등) */
+.rte-wrap{border:1px solid var(--line);border-radius:8px;background:#fff}
+.rte-bar{display:flex;flex-wrap:wrap;gap:3px;align-items:center;padding:5px 6px;border-bottom:1px solid var(--line);background:#faf6ef;border-radius:8px 8px 0 0}
+.rte-bar button,.rte-bar select{font-family:inherit;font-size:13px;min-width:30px;height:30px;padding:0 7px;border:1px solid transparent;
+  border-radius:6px;background:transparent;color:var(--ink);cursor:pointer;line-height:1}
+.rte-bar button:hover{background:#fff;border-color:var(--line)}
+.rte-bar select{border-color:var(--line);background:#fff;padding:0 4px}
+.rte-sep{width:1px;height:20px;background:var(--line);margin:0 3px}
+.rte-bar{position:relative}
+.rte-dd{display:inline-block}
+.rte-pop{display:none;position:absolute;top:100%;left:6px;margin-top:2px;z-index:20;background:#fff;border:1px solid var(--line);border-radius:8px;
+  padding:6px;box-shadow:0 4px 14px rgba(0,0,0,.15);width:164px;flex-wrap:wrap;gap:4px}
+.rte-dd.open .rte-pop{display:flex}
+.rte-bar .rte-sw{width:26px;min-width:26px;height:26px;padding:0;border:1px solid rgba(0,0,0,.25);font-size:12px;color:#c62828}
+.rte{height:60vh;min-height:380px;overflow:auto;resize:vertical;padding:12px 14px;font-size:15.5px;line-height:1.75;outline:none;
+  word-break:break-word;border-radius:0 0 8px 8px;color:var(--ink)}
+.rte:focus{box-shadow:inset 0 0 0 2px var(--gold-l)}
+.rte:empty:before{content:attr(data-ph);color:#9a8f86;white-space:pre-wrap;pointer-events:none}
+.rte-view{line-height:1.7;font-size:14px;margin-top:6px;word-break:break-word}
+.rte ul,.rte ol,.rte-view ul,.rte-view ol{padding-left:1.6em;margin:4px 0}
+.rte p,.rte-view p{margin:0 0 .4em}
+.rte pre,.rte-view pre{font-family:inherit;white-space:pre-wrap}
+.rte table,.rte-view table{border-collapse:collapse;margin:6px 0}
+.rte td,.rte th,.rte-view td,.rte-view th{border:1px solid #bbb;padding:3px 6px}
+.rte blockquote,.rte-view blockquote{border-left:3px solid var(--gold-l);margin:4px 0;padding-left:10px;color:#555}
+@media print{.rte-view{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
 
 /* 큰 카테고리 (전례단 / 사목평의회 / 남성총구역) */
 .cat-nav{max-width:1080px;margin:12px auto 0;display:flex;gap:8px;flex-wrap:wrap;overflow:visible}
@@ -229,7 +254,7 @@ td input{width:100%;border:none;padding:2px;background:transparent}
       <input type="text" id="meet-place" value="마테오방" style="width:110px" title="장소">
       <input type="number" id="meet-count" placeholder="참석 인원" style="width:100px" min="0">
     </div>
-    <textarea id="meet-content" placeholder="회의 내용을 입력하세요.&#10;예)&#10;1. 2월 시간표 확정&#10;2. 성모신심 미사 봉사자 배정&#10;3. ..."></textarea>
+    <div class="rte-mount" data-id="meet-content" data-ph="회의 내용을 입력하세요.&#10;예)&#10;1. 2월 시간표 확정&#10;2. 성모신심 미사 봉사자 배정&#10;3. ..."></div>
     <div class="row" style="margin-top:8px">
       <button class="btn btn-p" onclick="saveMeeting()">회의록 저장</button>
       <span class="status" id="meet-status"></span>
@@ -422,7 +447,7 @@ const ROSTER_URL = 'https://raw.githubusercontent.com/khmass-liturgy/liturgy/mai
 const FB_PATH = 'jeonrye/data';   // Realtime Database 저장 경로
 
 let S = {
-  meetings: {},      // "YYYY-MM": {date, place, count, content, savedAt}
+  meetings: {},      // "YYYY-MM": {date, place, count, content(글자만), html(서식 포함, 있을 때만), savedAt}
   suggestions: [],   // {id, date, who, text, done}
   finance: {},       // "YYYY-MM": {carry:null|number, rows:[{date,type:'수입'|'지출',desc,amt}]}
   members: [],       // {name, bapt, feast, phone, duty, joined, addr, note}
@@ -458,6 +483,158 @@ function fourthTuesday(y,m){ // m: 1~12
 function fmtDate(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function comma(n){ return (n||0).toLocaleString('ko-KR'); }
 function esc(s){ return String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+/* ════════════════════════ 서식 편집기 (회의록 글: 굵게·색깔·크기 등) ════════════════════════
+   글은 두 가지로 저장한다: html(서식 포함) + content(글자만 — 예전 기록·서식 없는 화면과 호환).
+   html 은 넣을 때(붙여넣기)·저장할 때·보여 줄 때 모두 rteClean 을 거쳐
+   허용한 태그와 글꼴 관련 스타일만 남긴다(스크립트·링크·이미지·이벤트 속성은 버림). */
+const RTE_COLORS = [['#222222','검정'],['#c62828','빨강'],['#e65100','주황'],['#b8860b','황토'],['#2e7d32','초록'],
+  ['#1565c0','파랑'],['#283593','남색'],['#6a1b9a','보라'],['#7b2d3b','자주'],['#757575','회색']];
+const RTE_MARKS = [['#fff176','노랑'],['#c5e1a5','연두'],['#b3e5fc','하늘'],['#f8bbd0','분홍'],['#ffcc80','주황'],['transparent','형광펜 없애기']];
+const RTE_TAGS = /^(B|STRONG|I|EM|U|S|STRIKE|DEL|INS|SPAN|FONT|DIV|P|BR|PRE|UL|OL|LI|BLOCKQUOTE|H[1-6]|SUB|SUP|HR|TABLE|THEAD|TBODY|TFOOT|TR|TD|TH|CENTER)$/;
+const RTE_DROP = /^(SCRIPT|STYLE|IFRAME|FRAME|FRAMESET|OBJECT|EMBED|TEMPLATE|NOSCRIPT|META|LINK|BASE|TITLE|HEAD|SVG|MATH|CANVAS|VIDEO|AUDIO|IMG|PICTURE|SOURCE|BUTTON|INPUT|SELECT|TEXTAREA|FORM)$/;
+const RTE_CSS = ['color','background-color','font-size','font-weight','font-style','text-decoration','text-decoration-line','text-align'];
+function rteClean(html){
+  const t = document.createElement('template');      // template 안은 실행·로딩이 일어나지 않는다
+  t.innerHTML = String(html || '');
+  const walk = node => {
+    [...node.childNodes].forEach(ch=>{
+      if(ch.nodeType === 3) return;
+      if(ch.nodeType !== 1){ ch.remove(); return; }
+      const tag = ch.tagName.toUpperCase();
+      if(RTE_DROP.test(tag)){ ch.remove(); return; }
+      walk(ch);
+      if(!RTE_TAGS.test(tag)){ ch.replaceWith(...ch.childNodes); return; }   // 모르는 태그(a, o:p 등)는 벗기고 글자만 남김
+      const keep = [];
+      RTE_CSS.forEach(p=>{ const v = ch.style.getPropertyValue(p); if(v && !/url|expression|javascript|[<>]/i.test(v)) keep.push(p+':'+v); });
+      const fc = tag==='FONT' ? ch.getAttribute('color') : null, fs = tag==='FONT' ? ch.getAttribute('size') : null;
+      const spans = (tag==='TD'||tag==='TH') ? ['colspan','rowspan'].map(a=>[a, ch.getAttribute(a)]).filter(([,v])=>/^\d{1,2}$/.test(v||'')) : [];
+      [...ch.attributes].forEach(a=>ch.removeAttribute(a.name));
+      if(keep.length) ch.setAttribute('style', keep.join(';'));
+      if(fc && /^(#[0-9a-f]{3,8}|[a-z]{3,20})$/i.test(fc)) ch.setAttribute('color', fc);
+      if(fs && /^[1-7]$/.test(fs)) ch.setAttribute('size', fs);
+      spans.forEach(([a,v])=>ch.setAttribute(a, v));
+    });
+  };
+  walk(t.content);
+  return t.innerHTML;
+}
+function rteBox(id, ph){
+  const sw = (list, cmd) => list.map(([c,n])=>`<button type="button" class="rte-sw" data-rc="${cmd}" data-rv="${c}" title="${n}" style="background:${c==='transparent'?'#fff':c}">${c==='transparent'?'✕':''}</button>`).join('');
+  return `<div class="rte-wrap">
+    <div class="rte-bar no-print" data-for="${id}">
+      <button type="button" data-rc="bold" title="굵게 (Ctrl+B)"><b>가</b></button>
+      <button type="button" data-rc="italic" title="기울임 (Ctrl+I)"><i>가</i></button>
+      <button type="button" data-rc="underline" title="밑줄 (Ctrl+U)"><u>가</u></button>
+      <button type="button" data-rc="strikeThrough" title="취소선"><s>가</s></button>
+      <span class="rte-sep"></span>
+      <span class="rte-dd"><button type="button" data-rpop="1" title="글자 색"><b style="color:#c62828;border-bottom:3px solid #c62828">가</b> ▾</button>
+        <span class="rte-pop">${sw(RTE_COLORS,'foreColor')}</span></span>
+      <span class="rte-dd"><button type="button" data-rpop="1" title="형광펜 (글자 배경색)"><span style="background:#fff176;padding:0 3px">가</span> ▾</button>
+        <span class="rte-pop">${sw(RTE_MARKS,'hiliteColor')}</span></span>
+      <select data-rc="fontSize" title="글자 크기"><option value="">크기</option><option value="2">작게</option><option value="3">보통</option><option value="5">크게</option><option value="6">아주 크게</option></select>
+      <span class="rte-sep"></span>
+      <button type="button" data-rc="insertUnorderedList" title="글머리 기호 목록">• 목록</button>
+      <button type="button" data-rc="insertOrderedList" title="번호 목록">1. 목록</button>
+      <button type="button" data-rc="justifyLeft" title="왼쪽 정렬">왼쪽</button>
+      <button type="button" data-rc="justifyCenter" title="가운데 정렬">가운데</button>
+      <button type="button" data-rc="justifyRight" title="오른쪽 정렬">오른쪽</button>
+      <span class="rte-sep"></span>
+      <button type="button" data-rc="removeFormat" title="고른 글자의 굵게·색깔 등 서식 지우기">서식 지우기</button>
+      <button type="button" data-rc="undo" title="되돌리기 (Ctrl+Z)">↶</button>
+      <button type="button" data-rc="redo" title="다시 실행 (Ctrl+Y)">↷</button>
+    </div>
+    <div id="${id}" class="rte" contenteditable="true" data-ph="${esc(ph)}"></div>
+  </div>`;
+}
+function rteFromText(t){ return t ? esc(t).replace(/\r?\n/g, '<br>') : ''; }
+function rteSet(id, rec){
+  const ed = document.getElementById(id); if(!ed) return;
+  ed.innerHTML = rec && rec.html ? rteClean(rec.html) : rteFromText(rec && rec.content);
+}
+// 서식 html → 글자만 (줄바꿈·목록 번호 유지). innerText 는 숨은 탭에서 줄바꿈을 잃어 직접 만든다.
+function rteText(html){
+  const t = document.createElement('template'); t.innerHTML = html;
+  const BLOCK = /^(DIV|P|LI|TR|H[1-6]|BLOCKQUOTE|PRE|UL|OL|TABLE|CENTER|HR)$/;
+  let out = '';
+  const nl = () => { if(out && !out.endsWith('\n')) out += '\n'; };
+  const walk = (n, pre) => n.childNodes.forEach(ch=>{
+    if(ch.nodeType === 3){ out += pre ? ch.nodeValue : ch.nodeValue.replace(/[ \t\r\n]+/g, ' '); return; }
+    if(ch.nodeType !== 1) return;
+    const tag = ch.tagName;
+    if(tag === 'BR'){ out += '\n'; return; }
+    const blk = BLOCK.test(tag);
+    if(blk) nl();
+    if(tag === 'LI') out += ch.parentElement && ch.parentElement.tagName === 'OL' ? ([...ch.parentElement.children].indexOf(ch) + 1) + '. ' : '• ';
+    walk(ch, pre || tag === 'PRE');
+    if(tag === 'TD' || tag === 'TH') out += '\t';
+    if(blk) nl();
+  });
+  walk(t.content, false);
+  return out.replace(/ /g, ' ').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').replace(/\s+$/, '');
+}
+function rteGet(id){
+  const html = rteClean(document.getElementById(id).innerHTML);
+  const text = rteText(html);
+  return { content: text, html: text.trim() ? html : '' };
+}
+function rteView(r){ return r && r.html ? `<div class="rte-view">${rteClean(r.html)}</div>` : `<pre>${esc(r && r.content)}</pre>`; }
+
+// 버튼을 누르면 편집칸의 선택 영역이 풀리므로 마지막 선택 영역을 기억했다가 되살린다.
+let rteRange = null, rteRangeId = null;
+document.addEventListener('selectionchange', ()=>{
+  const s = getSelection(); if(!s.rangeCount) return;
+  const r = s.getRangeAt(0), n = r.commonAncestorContainer;
+  const ed = (n.nodeType === 1 ? n : n.parentElement);
+  const box = ed && ed.closest ? ed.closest('.rte') : null;
+  if(box){ rteRange = r.cloneRange(); rteRangeId = box.id; }
+});
+function rteExec(id, cmd, val){
+  const ed = document.getElementById(id); if(!ed) return;
+  const s = getSelection();
+  const inside = s.rangeCount && ed.contains(s.getRangeAt(0).commonAncestorContainer);
+  ed.focus();
+  if(!inside && rteRange && rteRangeId === id && ed.contains(rteRange.commonAncestorContainer)){
+    s.removeAllRanges(); s.addRange(rteRange);      // 크기 고르기처럼 선택이 풀린 경우에만 되살림
+  }
+  document.execCommand('styleWithCSS', false, true);
+  const ok = document.execCommand(cmd, false, val == null ? null : val);
+  if(!ok && cmd === 'hiliteColor') document.execCommand('backColor', false, val);
+}
+document.addEventListener('mousedown', e=>{ if(e.target.closest && e.target.closest('.rte-bar button')) e.preventDefault(); });
+document.addEventListener('click', e=>{
+  document.querySelectorAll('.rte-dd.open').forEach(d=>{ if(!d.contains(e.target)) d.classList.remove('open'); });
+  const bar = e.target.closest && e.target.closest('.rte-bar'); if(!bar) return;
+  const pop = e.target.closest('[data-rpop]');
+  if(pop){ pop.parentElement.classList.toggle('open'); return; }
+  const b = e.target.closest('button[data-rc]'); if(!b) return;
+  rteExec(bar.dataset.for, b.dataset.rc, b.dataset.rv);
+  const dd = b.closest('.rte-dd'); if(dd) dd.classList.remove('open');
+});
+document.addEventListener('change', e=>{
+  const sel = e.target.closest && e.target.closest('.rte-bar select[data-rc]'); if(!sel || !sel.value) return;
+  rteExec(sel.closest('.rte-bar').dataset.for, sel.dataset.rc, sel.value);
+  sel.value = '';
+});
+// 붙여넣기: 한글·워드·웹에서 가져온 글도 굵게·색깔은 살리고 나머지(글꼴·이미지·링크 등)는 걸러서 넣는다.
+document.addEventListener('paste', e=>{
+  const ed = e.target.nodeType === 1 ? e.target.closest('.rte') : e.target.parentElement && e.target.parentElement.closest('.rte');
+  if(!ed || !e.clipboardData) return;
+  const html = e.clipboardData.getData('text/html'), text = e.clipboardData.getData('text/plain');
+  e.preventDefault();
+  if(html) document.execCommand('insertHTML', false, rteClean(html));
+  else if(text) document.execCommand('insertText', false, text);
+});
+document.addEventListener('drop', e=>{
+  const ed = e.target.closest ? e.target.closest('.rte') : null;
+  if(ed && e.dataTransfer && e.dataTransfer.files.length) e.preventDefault();   // 사진은 아래 '사진 첨부'로
+});
+// 다 지우면 안내 문구가 다시 보이도록 남은 빈 줄 태그를 비운다.
+document.addEventListener('input', e=>{
+  const ed = e.target; if(!ed.classList || !ed.classList.contains('rte')) return;
+  if(ed.textContent === '' && !ed.querySelector('li,hr,table')) ed.innerHTML = '';
+});
+document.querySelectorAll('.rte-mount').forEach(m=>{ m.outerHTML = rteBox(m.dataset.id, m.dataset.ph); });
 
 /* 엑셀 모듈 로딩 확인 (CDN 차단·오프라인 시 조용히 실패하지 않도록) */
 function ensureXLSX(statusId){
@@ -498,19 +675,21 @@ function loadMeetingForm(){
   document.getElementById('meet-date').value  = rec?.date || fmtDate(t4);
   document.getElementById('meet-place').value = rec?.place || '마테오방';
   document.getElementById('meet-count').value = rec?.count ?? '';
-  document.getElementById('meet-content').value = rec?.content || '';
+  rteSet('meet-content', rec);
   document.getElementById('meet-badge').textContent = m+'월 넷째 화요일: '+fmtDate(t4);
   renderMeetPhotos();
 }
 function buildMeetRec(ym){
   const old = S.meetings[ym];
+  const body = rteGet('meet-content');
   const r = {
     date:  document.getElementById('meet-date').value,
     place: document.getElementById('meet-place').value.trim(),
     count: document.getElementById('meet-count').value,
-    content: document.getElementById('meet-content').value,
+    content: body.content,
     savedAt: new Date().toISOString()
   };
+  if(body.html) r.html = body.html;
   if(old && old.photos) r.photos = old.photos;   // 글을 다시 저장해도 첨부 사진 목록은 그대로 둔다
   if(old && old.files)  r.files  = old.files;    // 첨부 전례표(엑셀) 목록도 마찬가지
   return r;
@@ -536,7 +715,7 @@ function renderMeetings(){
       <div class="meet-meta">${esc(r.date)} · ${esc(r.place)}${r.count?` · 참석 ${esc(r.count)}명`:''}
         <button class="btn btn-sm no-print" onclick="editMeeting('${ym}')">수정</button>
         <button class="btn btn-sm btn-danger no-print" onclick="delMeeting('${ym}')">삭제</button></div>
-      <pre>${esc(r.content)}</pre>
+      ${rteView(r)}
       ${photoStrip('liturgy', ym, false)}
       ${meetFiles(ym).length ? '<div style="margin-top:6px">'+meetFileRows(ym, false)+'</div>' : ''}
     </div>`;
@@ -1672,7 +1851,7 @@ function groupTabHtml(k){
       <input type="text" id="${k}-place" placeholder="장소" style="width:130px" title="장소">
       <input type="number" id="${k}-count" placeholder="참석 인원" style="width:100px" min="0">
     </div>
-    <textarea id="${k}-content" class="meet-big" placeholder="회의 내용을 입력하세요.&#10;예)&#10;1. 지난 회의 결과 보고&#10;2. 안건 논의&#10;3. ..."></textarea>
+    ${rteBox(k+'-content', '회의 내용을 입력하세요.\n예)\n1. 지난 회의 결과 보고\n2. 안건 논의\n3. ...')}
     <div class="row" style="margin-top:8px">
       <button class="btn btn-p" data-act="save">회의록 저장</button>
       <span class="status" id="${k}-status"></span>
@@ -1714,7 +1893,7 @@ function loadGroupForm(k){
   document.getElementById(k+'-date').value    = rec?.date || fmtDate(t1);
   document.getElementById(k+'-place').value   = rec?.place || '';
   document.getElementById(k+'-count').value   = rec?.count ?? '';
-  document.getElementById(k+'-content').value = rec?.content || '';
+  rteSet(k+'-content', rec);
   document.getElementById(k+'-badge').textContent = m+'월 '+G.short+': '+fmtDate(t1);
   document.getElementById(k+'-files-month').textContent = y+'년 '+m+'월';
   renderGroupFiles(k);
@@ -1723,13 +1902,16 @@ function loadGroupForm(k){
 function saveGroup(k){
   const ym = document.getElementById(k+'-ym').value;
   if(!ym){ alert('회의 월을 선택하세요'); return; }
-  grp(k).meetings[ym] = {
+  const body = rteGet(k+'-content');
+  const r = {
     date:  document.getElementById(k+'-date').value,
     place: document.getElementById(k+'-place').value.trim(),
     count: document.getElementById(k+'-count').value,
-    content: document.getElementById(k+'-content').value,
+    content: body.content,
     savedAt: new Date().toISOString()
   };
+  if(body.html) r.html = body.html;
+  grp(k).meetings[ym] = r;
   persist(); renderGroup(k);
   grpMsg(k+'-status', '✅ 저장됨', 'ok');
   setTimeout(()=>grpMsg(k+'-status',''), 2000);
@@ -1783,7 +1965,7 @@ function renderGroup(k){
         <div class="meet-meta">${head}
           <button class="btn btn-sm no-print" data-act="edit" data-ym="${esc(ym)}">수정</button>
           ${r ? `<button class="btn btn-sm btn-danger no-print" data-act="del" data-ym="${esc(ym)}">삭제</button>` : ''}</div>
-        ${r && r.content ? `<pre>${esc(r.content)}</pre>` : ''}
+        ${r && (r.content || r.html) ? rteView(r) : ''}
         ${photoStrip(k, ym, false)}
         ${grpFiles(k,ym).length ? `<div style="margin-top:6px">${groupFileRows(k,ym,false)}</div>` : ''}
       </div>`;
