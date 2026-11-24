@@ -152,6 +152,9 @@ td input{width:100%;border:none;padding:2px;background:transparent}
   .tab{display:none}.tab.on{display:block}
   .att-date-input{display:none}
   .att-date-print{display:inline}
+  /* 출석률 통계는 출석부 표 다음 쪽에 따로 인쇄한다 */
+  .att-stats{break-before:page}
+  .att-stats tr{break-inside:avoid}
   .tbl-scroll{overflow:visible!important}
   @page{size:A4 portrait;margin:14mm}
 }
@@ -385,7 +388,7 @@ td input{width:100%;border:none;padding:2px;background:transparent}
     <p class="hint" style="margin:4px 0 10px">각 달의 <b>넷째 화요일</b>이 회의일입니다. 칸을 누르면 <b class="att-O">○출석</b> → <b class="att-X">✕불참</b> → 빈칸 순으로 바뀝니다. <span id="att-drag-hint">'사용자 지정' 정렬에서는 이름 칸을 끌어서 순서를 바꿀 수 있습니다.</span></p>
     <div class="att-wrap"><table id="att-table"></table></div>
   </div>
-  <div class="card no-print">
+  <div class="card att-stats">
     <h2>📊 연도별 출석률 통계</h2>
     <p class="hint" style="margin:0 0 10px">○출석·✕불참으로 기록된 칸만 셉니다(빈칸은 제외). 월례 회의와 부활·성탄 행사를 모두 포함합니다.</p>
     <div class="att-wrap"><table id="att-stats-year"></table></div>
