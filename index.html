@@ -385,6 +385,13 @@ td input{width:100%;border:none;padding:2px;background:transparent}
     <p class="hint" style="margin:4px 0 10px">각 달의 <b>넷째 화요일</b>이 회의일입니다. 칸을 누르면 <b class="att-O">○출석</b> → <b class="att-X">✕불참</b> → 빈칸 순으로 바뀝니다. <span id="att-drag-hint">'사용자 지정' 정렬에서는 이름 칸을 끌어서 순서를 바꿀 수 있습니다.</span></p>
     <div class="att-wrap"><table id="att-table"></table></div>
   </div>
+  <div class="card no-print">
+    <h2>📊 연도별 출석률 통계</h2>
+    <p class="hint" style="margin:0 0 10px">○출석·✕불참으로 기록된 칸만 셉니다(빈칸은 제외). 월례 회의와 부활·성탄 행사를 모두 포함합니다.</p>
+    <div class="att-wrap"><table id="att-stats-year"></table></div>
+    <h3 style="font-size:15px;color:var(--wine);margin:16px 0 8px">단원별 연도별 출석률</h3>
+    <div class="att-wrap"><table id="att-stats-member"></table></div>
+  </div>
 </section>
 
 <!-- ═══════ 사목평의회 / 남성총구역 (같은 틀 — 내용은 JS 가 채운다) ═══════ -->
@@ -1310,7 +1317,69 @@ function attToggle(name,m){
   S.attendance[Y][name][m] = cur==='' ? 'O' : cur==='O' ? 'X' : '';
   persist(); renderAttend();
 }
+/* ── 연도별 출석률 통계 ──
+   출석부 표와 같은 기준: ○(O)·✕(X)로 기록된 칸만 분모로 센다. 빈칸은 회의가 없었거나 아직 안 적은 것. */
+function attStatOf(rec){
+  let cnt = 0, recorded = 0;
+  Object.values(rec || {}).forEach(v=>{
+    if(v==='O'){ cnt++; recorded++; } else if(v==='X') recorded++;
+  });
+  return {cnt, recorded};
+}
+function attPctCell(cnt, recorded){
+  if(!recorded) return '<td class="c" style="color:var(--muted)">-</td>';
+  const pct = Math.round(cnt/recorded*100);
+  const color = pct>=80 ? 'var(--ok)' : pct<50 ? 'var(--bad)' : 'var(--ink)';
+  return `<td class="c"><b style="color:${color}">${pct}%</b> <span style="font-size:11.5px;color:var(--muted)">${cnt}/${recorded}</span></td>`;
+}
+function renderAttStats(){
+  const ty = document.getElementById('att-stats-year');
+  const tm = document.getElementById('att-stats-member');
+  if(!ty || !tm) return;
+  const years = Object.keys(S.attendance||{})
+    .filter(y=>/^\d{4}$/.test(y) && Object.values(S.attendance[y]||{}).some(r=>attStatOf(r).recorded>0))
+    .sort();
+  if(!years.length){
+    ty.innerHTML = '<tr><td class="empty">아직 출석 기록이 없습니다. 위 출석부에 ○/✕를 기록하면 통계가 나옵니다.</td></tr>';
+    tm.innerHTML = '';
+    return;
+  }
+  // 1) 연도별 요약
+  let yh = '<tr><th class="c">연도</th><th class="c">기록된 회의·행사</th><th class="c">기록된 인원</th><th class="c">회의당 평균 출석</th><th class="c">평균 출석률</th></tr>';
+  let yb = years.map(y=>{
+    const A = S.attendance[y] || {};
+    const keys = new Set(); let cnt = 0, recorded = 0, people = 0;
+    Object.values(A).forEach(rec=>{
+      const s = attStatOf(rec);
+      if(s.recorded>0) people++;
+      cnt += s.cnt; recorded += s.recorded;
+      Object.keys(rec||{}).forEach(k=>{ if(rec[k]==='O'||rec[k]==='X') keys.add(k); });
+    });
+    const avg = keys.size ? (cnt/keys.size).toFixed(1) : '-';
+    return `<tr><td class="c"><b>${y}년</b></td><td class="c">${keys.size}회</td><td class="c">${people}명</td><td class="c">${avg}명</td>${attPctCell(cnt, recorded)}</tr>`;
+  }).join('');
+  ty.innerHTML = yh + yb;
+  // 2) 단원별 × 연도별 (출석부 정렬 순서를 따르고, 명단에 없지만 기록이 남은 이름은 뒤에 붙인다)
+  const names = attSortedNames();
+  years.forEach(y=>Object.keys(S.attendance[y]||{}).forEach(n=>{
+    if(!names.includes(n) && attStatOf(S.attendance[y][n]).recorded>0) names.push(n);
+  }));
+  let mh = '<tr><th class="att-name">이름</th>' + years.map(y=>`<th class="c">${y}년</th>`).join('') + '<th class="c att-sum">전체</th></tr>';
+  let mb = names.map(n=>{
+    let tc = 0, tr = 0;
+    const cells = years.map(y=>{
+      const s = attStatOf((S.attendance[y]||{})[n]);
+      tc += s.cnt; tr += s.recorded;
+      return attPctCell(s.cnt, s.recorded);
+    }).join('');
+    const total = attPctCell(tc, tr).replace('<td class="c"', '<td class="c att-sum"');
+    const gone = S.roster.includes(n) ? '' : ' <span style="font-size:11px;color:var(--muted)">(명단 없음)</span>';
+    return `<tr><td class="att-name">${esc(n)}${gone}</td>${cells}${total}</tr>`;
+  }).join('');
+  tm.innerHTML = mh + mb;
+}
 function renderAttend(){
+  renderAttStats();
   document.getElementById('att-year').textContent = attY+'년';
   const Y = String(attY);
   const A = S.attendance[Y] || {};
