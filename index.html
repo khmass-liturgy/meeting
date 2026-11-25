@@ -314,6 +314,21 @@ td input{width:100%;border:none;padding:2px;background:transparent}
     </div>
     <p class="hint">양식: <b>날짜 / 구분(수입·지출) / 내용 / 금액</b> 열이 있는 엑셀 파일을 올리면 월별로 자동 정리됩니다. 같은 달 자료를 다시 올리면 해당 월이 새 내용으로 교체됩니다.</p>
   </div>
+  <div class="card no-print">
+    <h2>📥 엑셀로 저장 (기간 선택)</h2>
+    <div class="row">
+      <input type="month" id="finx-from" title="시작 월">
+      <span>~</span>
+      <input type="month" id="finx-to" title="끝 월">
+      <button class="btn btn-sm" onclick="finxPreset('month')">이번 달</button>
+      <button class="btn btn-sm" onclick="finxPreset('year')">올해</button>
+      <button class="btn btn-sm" onclick="finxPreset('lastyear')">작년</button>
+      <button class="btn btn-sm" onclick="finxPreset('all')">전체</button>
+      <button class="btn btn-p" onclick="exportFinanceExcel()">엑셀 저장</button>
+      <span class="status" id="finx-status"></span>
+    </div>
+    <p class="hint">고른 기간의 회비 내역을 엑셀 파일 하나로 저장합니다. 시트는 세 개입니다: <b>회비 내역</b>(날짜순, 월별 소계·잔액), <b>월별 요약</b>(이월금·회비·빨랑카·후원금·기타 수입·지출·잔액), <b>단원별 합계</b>(단원마다 회비·빨랑카·후원금, 탈단 단원 포함).</p>
+  </div>
   <div class="card">
     <div class="row" style="justify-content:space-between">
       <div class="month-nav">
@@ -1086,8 +1101,8 @@ function carryOf(ym){
   let [y,m] = ym.split('-').map(Number);
   m--; if(m<1){m=12;y--;}
   const prevYM = y+'-'+String(m).padStart(2,'0');
-  const prev = S.finance[prevYM];
-  if(!prev) return 0;
+  // 직전 달에 내역이 없어도(거래 없는 달) 그 앞 달 잔액을 그대로 이어받는다. 더 앞에 기록이 전혀 없을 때만 0.
+  if(!S.finance[prevYM] && !Object.keys(S.finance).some(k=>k < prevYM)) return 0;
   return balanceOf(prevYM);
 }
 function balanceOf(ym){
@@ -1153,6 +1168,7 @@ function renderFinance(){
       </tr>`).join('');
   }
   renderFinFoot();
+  finxInit();
 }
 function renderFinFoot(){
   const f = S.finance[finYM] || { rows:[] };
@@ -1282,6 +1298,115 @@ function downloadFinanceTemplate(){
   ws['!cols'] = [{wch:12},{wch:8},{wch:30},{wch:12}];
   XLSX.utils.book_append_sheet(wb, ws, '회비내역');
   XLSX.writeFile(wb, '전례단_회비_양식.xlsx');
+}
+
+/* ── 기간별 엑셀 저장 ──
+   화면과 같은 계산(carryOf·누적 잔액·makeIncomeClassifier)을 그대로 써서 숫자가 화면과 어긋나지 않게 한다. */
+function ymAdd(ym, d){
+  let [y,m] = ym.split('-').map(Number);
+  m += d; while(m<1){ m+=12; y--; } while(m>12){ m-=12; y++; }
+  return y+'-'+String(m).padStart(2,'0');
+}
+function ymList(from, to){ const out = []; for(let ym=from; ym<=to && out.length<600; ym=ymAdd(ym,1)) out.push(ym); return out; }
+function finxPreset(kind){
+  const f = document.getElementById('finx-from'), t = document.getElementById('finx-to');
+  const now = ymNow(), y = Number(now.slice(0,4));
+  if(kind==='month'){ f.value = finYM; t.value = finYM; }
+  else if(kind==='year'){ f.value = y+'-01'; t.value = now; }
+  else if(kind==='lastyear'){ f.value = (y-1)+'-01'; t.value = (y-1)+'-12'; }
+  else {
+    const ks = Object.keys(S.finance).filter(k=>((S.finance[k]||{}).rows||[]).length).sort();
+    f.value = ks[0] || now; t.value = ks[ks.length-1] || now;
+  }
+}
+function finxInit(){
+  const f = document.getElementById('finx-from'), t = document.getElementById('finx-to');
+  if(f && !f.value) f.value = finYM.slice(0,4)+'-01';
+  if(t && !t.value) t.value = finYM;
+}
+function exportFinanceExcel(){
+  const st = document.getElementById('finx-status');
+  if(!ensureXLSX('finx-status')) return;
+  let from = document.getElementById('finx-from').value, to = document.getElementById('finx-to').value;
+  if(!from || !to){ alert('시작 월과 끝 월을 고르세요'); return; }
+  if(from > to){ [from, to] = [to, from]; }
+  const months = ymList(from, to);
+  const classify = makeIncomeClassifier(duesNameSets().all);
+  const KIND = { dues:'회비', gift:'빨랑카·후원금', etc:'기타 수입' };
+  const label = ym => { const [y,m] = ym.split('-'); return y+'년 '+Number(m)+'월'; };
+
+  // ① 회비 내역 + ② 월별 요약
+  const detail = [['날짜','구분','분류','내용','수입','지출','잔액']];
+  const sumRows = [['월','이월금','회비','빨랑카·후원금','기타 수입','수입 합계','지출 합계','잔액']];
+  const tot = { dues:0, gift:0, etc:0, inc:0, out:0 };
+  const byName = {};   // 이름 → {dues, gift}
+  const loose = { dues:0, gift:0, duesN:0, giftN:0 };
+  let nRows = 0, lastBal = carryOf(from);
+  months.forEach(ym=>{
+    const rows = ((S.finance[ym]||{}).rows) || [];
+    const carry = carryOf(ym);
+    let bal = carry;
+    const part = { dues:0, gift:0, etc:0, inc:0, out:0 };
+    if(rows.length) detail.push(['', '', '', `■ ${label(ym)} (이월금)`, '', '', carry]);
+    rows.forEach(r=>{
+      const amt = Number(r.amt||0);
+      let kind = '';
+      if(r.type==='지출'){ bal -= amt; part.out += amt; }
+      else {
+        bal += amt; part.inc += amt;
+        if(amt > 0){
+          const c = classify(r); kind = KIND[c.kind]; part[c.kind] += amt;
+          if(c.kind !== 'etc'){
+            if(c.who.length===1){ const b = byName[c.who[0]] = byName[c.who[0]] || {dues:0, gift:0}; b[c.kind] += amt; }
+            else { loose[c.kind] += amt; loose[c.kind+'N']++; }
+          }
+        }
+      }
+      detail.push([r.date||'', r.type||'', kind, r.desc||'', r.type==='지출' ? '' : amt, r.type==='지출' ? amt : '', bal]);
+      nRows++;
+    });
+    if(rows.length) detail.push(['', '', '', `${label(ym)} 소계`, part.inc, part.out, bal]);
+    sumRows.push([label(ym), carry, part.dues, part.gift, part.etc, part.inc, part.out, bal]);
+    Object.keys(part).forEach(k=>tot[k] += part[k]);
+    lastBal = bal;
+  });
+  if(!nRows && !confirm(from+' ~ '+to+' 기간에 회비 내역이 없습니다. 빈 파일이라도 저장할까요?')) return;
+  detail.push([]);
+  detail.push(['', '', '', '기간 수입 합계', tot.inc, '', '']);
+  detail.push(['', '', '', '기간 지출 합계', '', tot.out, '']);
+  detail.push(['', '', '', '기간 말 잔액', '', '', lastBal]);
+  sumRows.push(['합계', carryOf(from), tot.dues, tot.gift, tot.etc, tot.inc, tot.out, lastBal]);
+
+  // ③ 단원별 합계 (지금 단원 → 탈단 단원 순, 입금이 있는 사람만)
+  const NS = duesNameSets();
+  const per = [['이름','비고','회비','빨랑카·후원금','합계']];
+  let pd = 0, pg = 0;
+  NS.active.concat(NS.left).forEach(n=>{
+    const b = byName[n]; if(!b) return;
+    per.push([n, NS.left.includes(n) ? '탈단' : '', b.dues, b.gift, b.dues + b.gift]);
+    pd += b.dues; pg += b.gift;
+  });
+  if(loose.duesN) per.push([`이름 확인 안 됨·겹침 (${loose.duesN}건)`, '회비 형태', loose.dues, 0, loose.dues]);
+  if(loose.giftN) per.push([`이름 없는 후원 (${loose.giftN}건)`, '', 0, loose.gift, loose.gift]);
+  per.push(['합계', '', pd + loose.dues, pg + loose.gift, pd + pg + loose.dues + loose.gift]);
+
+  const sheet = (aoa, cols, moneyFrom) => {
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = cols.map(w=>({wch:w}));
+    const rg = XLSX.utils.decode_range(ws['!ref']);
+    for(let R=1; R<=rg.e.r; R++) for(let C=moneyFrom; C<=rg.e.c; C++){
+      const c = ws[XLSX.utils.encode_cell({r:R, c:C})];
+      if(c && c.t==='n') c.z = '#,##0';
+    }
+    return ws;
+  };
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, sheet(detail, [12,7,13,36,12,12,13], 4), '회비 내역');
+  XLSX.utils.book_append_sheet(wb, sheet(sumRows, [12,12,12,14,11,12,12,13], 1), '월별 요약');
+  XLSX.utils.book_append_sheet(wb, sheet(per, [24,10,12,14,12], 2), '단원별 합계');
+  const fname = from===to ? `전례단_회비_${from}.xlsx` : `전례단_회비_${from}_${to}.xlsx`;
+  XLSX.writeFile(wb, fname);
+  st.textContent = `✅ ${fname} 저장 (${months.length}개월, ${nRows}건)`; st.style.color = 'var(--ok)';
 }
 
 /* 월회비(5,000원) 납부 현황 */
