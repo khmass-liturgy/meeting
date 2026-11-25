@@ -347,7 +347,7 @@ td input{width:100%;border:none;padding:2px;background:transparent}
     <div style="overflow-x:auto;margin-top:10px">
     <table id="dues-table"></table>
     </div>
-    <p class="hint">입금 내역의 <b>내용에 단원 이름이 포함된 5,000원 단위 입금</b>(건당 60,000원 이하)을 회비로 자동 집계합니다. 간식후원처럼 5,000원 단위가 아니거나 연회비를 넘는 입금은 제외되며, 잘못 집계된 건은 회비 내역에서 내용을 수정하면 반영됩니다.</p>
+    <p class="hint">입금 내역의 <b>내용에 단원 이름이 포함된 5,000원 단위 입금</b>(건당 60,000원 이하)을 회비로 자동 집계합니다. 내용에 <b>빨랑카·후원·찬조·기부·헌금</b> 등이 들어 있거나, 단원 이름이 있지만 5,000원 단위가 아닌 입금은 <b>빨랑카·후원금</b> 칸에 따로 모읍니다. 탈단 단원의 지난 입금도 그 이름으로 집계됩니다. 잘못 집계된 건은 회비 내역에서 내용을 수정하면 반영됩니다.</p>
   </div>
 </section>
 
@@ -381,11 +381,29 @@ td input{width:100%;border:none;padding:2px;background:transparent}
     </h2>
     <div style="overflow-x:auto">
     <table>
-      <thead><tr><th>이름</th><th>세례명</th><th>축일</th><th>전화번호</th><th>담당</th><th>입단일</th><th>집주소</th><th>기타</th><th class="c no-print" style="width:56px">삭제</th></tr></thead>
+      <thead><tr><th>이름</th><th>세례명</th><th>축일</th><th>전화번호</th><th>담당</th><th>입단일</th><th>집주소</th><th>기타</th><th class="c no-print" style="width:104px">탈단 · 삭제</th></tr></thead>
       <tbody id="mb-body"></tbody>
     </table>
     </div>
-    <p class="hint no-print">칸을 바로 클릭해서 수정할 수 있습니다. 수정 즉시 저장됩니다.</p>
+    <p class="hint no-print">칸을 바로 클릭해서 수정할 수 있습니다. 수정 즉시 저장됩니다. 그만둔 단원은 <b>탈단</b>을 누르면 아래 '탈단 단원'으로 옮겨집니다(삭제와 달리 기록이 남습니다).</p>
+  </div>
+  <div class="card">
+    <h2>🚪 탈단 단원 <span class="pill" id="lm-count"></span></h2>
+    <div class="row no-print" style="margin-bottom:10px">
+      <input type="text" id="lm-name" placeholder="이름" style="width:100px">
+      <input type="text" id="lm-bapt" placeholder="세례명" style="width:110px">
+      <input type="text" id="lm-joined" placeholder="입단일 (예: 2008-01)" style="width:140px">
+      <input type="text" id="lm-left" placeholder="탈단일 (예: 2025-12)" style="width:140px">
+      <input type="text" id="lm-reason" placeholder="탈단 사유 (선택)" style="flex:1;min-width:140px">
+      <button class="btn" onclick="addLeftForm()">탈단 단원 직접 등록</button>
+    </div>
+    <div style="overflow-x:auto">
+    <table>
+      <thead><tr><th>이름</th><th>세례명</th><th>축일</th><th>전화번호</th><th>담당</th><th>입단일</th><th>탈단일</th><th>탈단 사유</th><th>집주소</th><th>기타</th><th class="c no-print" style="width:104px">복귀 · 삭제</th></tr></thead>
+      <tbody id="lm-body"></tbody>
+    </table>
+    </div>
+    <p class="hint no-print">탈단 단원은 출석부와 회비 명단에서 빠지지만 <b>지난 출석 기록과 회비·후원금 입금은 그 이름으로 계속 집계</b>되고, 해당 연도 표에 '(탈단)'으로 표시됩니다. <b>복귀</b>를 누르면 다시 명부로 옮겨집니다. 명부 '엑셀 내보내기'에 탈단 단원 시트도 함께 들어갑니다.</p>
   </div>
 </section>
 
@@ -451,6 +469,7 @@ let S = {
   suggestions: [],   // {id, date, who, text, done}
   finance: {},       // "YYYY-MM": {carry:null|number, rows:[{date,type:'수입'|'지출',desc,amt}]}
   members: [],       // {name, bapt, feast, phone, duty, joined, addr, note}
+  leftMembers: [],   // 탈단 단원: members 항목 + {left:탈단일, reason:사유}. 지난 출석·회비 기록 이름 맞추기에 쓴다.
   attendance: {},    // "YYYY": { name: {1:'O'|'X'|'', ...12} }
   roster: [],        // 출석부 이름 목록
   eventDates: {},     // { "YYYY": {easter:'YYYY-MM-DD', christmas:'YYYY-MM-DD'} }
@@ -470,6 +489,7 @@ function saveLocal(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(S)); }cat
 function persist(){ saveLocal(); scheduleCloudSave(); }
 function restore(){
   try{ const d = localStorage.getItem(LS_KEY); if(d) S = Object.assign(S, JSON.parse(d)); }catch(e){}
+  S.leftMembers = S.leftMembers || [];
   groupsEnsure(); calEnsure();
 }
 
@@ -1139,9 +1159,16 @@ function renderFinFoot(){
   const inc = f.rows.filter(r=>r.type==='수입').reduce((a,r)=>a+Number(r.amt||0),0);
   const out = f.rows.filter(r=>r.type==='지출').reduce((a,r)=>a+Number(r.amt||0),0);
   const carry = carryOf(finYM), bal = carry + inc - out;
+  // 수입을 회비 / 빨랑카·후원금 / 기타로 나눠 수입 합계 아래에 따로 적는다 (회비 표와 같은 기준).
+  const classify = makeIncomeClassifier(duesNameSets().all);
+  const part = { dues:0, gift:0, etc:0 };
+  f.rows.forEach(r=>{ if(r.type==='수입' && Number(r.amt)>0) part[classify(r).kind] += Number(r.amt); });
+  const sub = (label, v, color) => `<tr class="total-row fin-sub"><td colspan="3" class="r" style="font-weight:400;font-size:13px">└ ${label}</td>
+    <td class="r" style="font-weight:600;font-size:13px${color?';color:'+color:''}">${comma(v)}</td><td class="fin-bal"></td><td class="no-print"></td></tr>`;
+  const subs = inc ? sub('그중 회비', part.dues) + sub('그중 빨랑카·후원금', part.gift, 'var(--blue)') + (part.etc ? sub('그중 기타 수입', part.etc) : '') : '';
   document.getElementById('fin-foot').innerHTML = `
     <tr class="total-row"><td colspan="3" class="r">이월금</td><td class="r">${comma(carry)}</td><td class="fin-bal"></td><td class="no-print"></td></tr>
-    <tr class="total-row"><td colspan="3" class="r">수입 합계</td><td class="r money-in">＋${comma(inc)}</td><td class="fin-bal"></td><td class="no-print"></td></tr>
+    <tr class="total-row"><td colspan="3" class="r">수입 합계</td><td class="r money-in">＋${comma(inc)}</td><td class="fin-bal"></td><td class="no-print"></td></tr>${subs}
     <tr class="total-row"><td colspan="3" class="r">지출 합계</td><td class="r money-out">−${comma(out)}</td><td class="fin-bal"></td><td class="no-print"></td></tr>
     <tr class="total-row"><td colspan="4" class="r" style="color:var(--wine)">잔액</td><td class="r fin-bal" style="color:${bal<0?'var(--bad)':'var(--wine)'};font-weight:700">${comma(bal)}</td><td class="no-print"></td></tr>`;
 }
@@ -1261,59 +1288,103 @@ function downloadFinanceTemplate(){
 const DUES = 5000;
 let duesY = new Date().getFullYear();
 function duesYear(d){ duesY += d; renderDues(); }
-function renderDues(){
-  const el = document.getElementById('dues-table'); if(!el) return;
-  document.getElementById('dues-year').textContent = duesY+'년';
-  const names = [...new Set([...S.roster, ...S.members.map(m=>m.name)])].filter(Boolean);
-  if(!names.length){ el.innerHTML='<tr><td class="empty">단원 명단이 없습니다.</td></tr>'; return; }
-  // 해당 연도 수입 중 5,000원 배수 입금을 이름으로 매칭
-  const deposits = [];
-  Object.keys(S.finance).forEach(ym=>{
-    if(!ym.startsWith(String(duesY))) return;
-    ((S.finance[ym]||{}).rows||[]).forEach(r=>{
-      if(r.type==='수입' && r.amt>0 && r.amt % DUES === 0 && r.amt <= DUES*12) deposits.push(r);
-    });
-  });
+/* 수입 1건을 회비 / 후원금(빨랑카 등) / 기타로 나눈다. 회비 표와 월별 합계가 같은 기준을 쓴다.
+     - 내용에 빨랑카·후원·찬조·기부 등이 있으면 금액과 상관없이 후원금
+     - 그 밖에 5,000원 단위(6만원 이하)면 회비
+     - 5,000원 단위가 아니어도 단원 이름이 있으면 후원금 (예: "홍길동 7,000")
+     - 이름도 열쇠말도 없으면 기타 수입 (이자 등)
+   이름 후보에는 탈단 단원도 넣는다 — 그만둔 단원의 지난 입금이 '이름 없음'으로 빠지지 않게. */
+const GIFT_RE = /빨랑카|빠랑카|팔랑카|빨랑까|빠랑까|후원|찬조|기부|헌금|격려금|축하금/;
+function duesNameSets(){
+  const active = [...new Set([...S.roster, ...S.members.map(m=>m.name)])].filter(Boolean);
+  const left = (S.leftMembers||[]).map(m=>m.name).filter(n=>n && !active.includes(n));
+  return { active, left, all: active.concat(left) };
+}
+function makeIncomeClassifier(names){
   /* 입금 1건은 한 명에게만 배정한다. 단순 포함(includes)이면 '김민'이
      "김민수 회비"까지 가져가 이중 집계된다.
        - 다른 후보에 포함되는 이름은 버린다 ('김민' ⊂ '김민수' → 김민수)
        - 그러고도 서로 다른 이름이 둘 이상 남으면 (예: "김민 이영희 합산")
-         누구 것인지 알 수 없으므로 배정하지 않고 아래에 따로 보여준다. */
+         누구 것인지 알 수 없으므로 배정하지 않고 따로 보여준다. */
   const flat = s => String(s==null?'':s).replace(/\s+/g,'');
   const cand = names.map(n=>({name:n, key:flat(n)})).filter(c=>c.key);
-  const byName = {}, ambiguous = [], unmatched = [];
-  deposits.forEach(r=>{
+  return r => {
     const d = flat(r.desc);
     const hits = cand.filter(c=>d.includes(c.key));
-    if(!hits.length){ unmatched.push(r); return; }
-    const top = hits.filter(c=>!hits.some(o=>o!==c && o.key.length>c.key.length && o.key.includes(c.key)));
-    if(top.length>1){ ambiguous.push({row:r, who:top.map(c=>c.name)}); return; }
-    (byName[top[0].name] = byName[top[0].name] || []).push(r);
+    const who = hits.filter(c=>!hits.some(o=>o!==c && o.key.length>c.key.length && o.key.includes(c.key))).map(c=>c.name);
+    const amt = Number(r.amt||0);
+    let kind;
+    if(GIFT_RE.test(d)) kind = 'gift';
+    else if(amt % DUES === 0 && amt <= DUES*12) kind = 'dues';
+    else kind = who.length ? 'gift' : 'etc';
+    return { kind, who };
+  };
+}
+function renderDues(){
+  const el = document.getElementById('dues-table'); if(!el) return;
+  document.getElementById('dues-year').textContent = duesY+'년';
+  const NS = duesNameSets();
+  if(!NS.all.length){ el.innerHTML='<tr><td class="empty">단원 명단이 없습니다.</td></tr>'; return; }
+  const classify = makeIncomeClassifier(NS.all);
+  const byName = {}, giftBy = {}, ambiguous = [], unmatched = [], giftNoName = [];
+  Object.keys(S.finance).forEach(ym=>{
+    if(!ym.startsWith(String(duesY))) return;
+    ((S.finance[ym]||{}).rows||[]).forEach(r=>{
+      if(r.type!=='수입' || !(r.amt>0)) return;
+      const c = classify(r);
+      if(c.kind === 'dues'){
+        if(!c.who.length) unmatched.push(r);
+        else if(c.who.length>1) ambiguous.push({row:r, who:c.who});
+        else (byName[c.who[0]] = byName[c.who[0]] || []).push(r);
+      } else if(c.kind === 'gift'){
+        if(c.who.length===1) (giftBy[c.who[0]] = giftBy[c.who[0]] || []).push(r);
+        else giftNoName.push(r);
+      }
+    });
   });
+  // 탈단 단원은 그해 입금이 있거나, 그해까지 단원이었을 때(탈단 연도 ≥ 표 연도)만 보인다.
+  const leftShown = NS.left.filter(n=>{
+    if(byName[n] || giftBy[n]) return true;
+    const ly = leftYear(leftOf(n));
+    return ly !== null && ly >= duesY;
+  });
+  const names = NS.active.concat(leftShown);
   const md = r => String(r.date||'').slice(5);
-  let head = '<tr><th>이름</th><th class="r">납부액</th><th class="c">개월수</th><th class="c">상태</th><th>매칭 내역</th></tr>';
-  let totalPaid = 0;
+  const sum = list => (list||[]).reduce((a,r)=>a+Number(r.amt||0),0);
+  let head = '<tr><th>이름</th><th class="r">회비 납부액</th><th class="r">빨랑카·후원금</th><th class="c">개월수</th><th class="c">상태</th><th>입금 내역</th></tr>';
+  let totalPaid = 0, totalGift = 0;
   const body = names.map(name=>{
-    const mine = byName[name] || [];
-    const paid = mine.reduce((a,r)=>a+r.amt,0);
-    totalPaid += paid;
+    const mine = byName[name] || [], gifts = giftBy[name] || [];
+    const paid = sum(mine), gift = sum(gifts);
+    totalPaid += paid; totalGift += gift;
+    const isLeft = !NS.active.includes(name);
     const months = paid / DUES;
     const stat = months>=12 ? `<span style="color:var(--ok);font-weight:700">완납${months>12?` (+${months-12})`:''}</span>`
-      : months>0 ? months+'개월' : '<span style="color:var(--bad)">미납</span>';
-    const detail = mine.map(r=>`${md(r)} ${comma(r.amt)}`).join(', ');
-    return `<tr><td class="att-name">${esc(name)}</td><td class="r">${comma(paid)}</td>
+      : months>0 ? months+'개월' : isLeft ? '<span style="color:var(--muted)">탈단</span>' : '<span style="color:var(--bad)">미납</span>';
+    const detail = mine.map(r=>`${md(r)} ${comma(r.amt)}`)
+      .concat(gifts.map(r=>`후원 ${md(r)} ${comma(r.amt)}`)).join(', ');
+    return `<tr${isLeft?' style="background:#F6F3EE"':''}><td class="att-name">${esc(name)}${isLeft?' <span style="font-size:11px;color:var(--muted)">(탈단)</span>':''}</td>
+      <td class="r">${comma(paid)}</td>
+      <td class="r" style="color:var(--blue)">${gift?comma(gift):''}</td>
       <td class="c">${months||''}</td><td class="c">${stat}</td>
       <td style="font-size:12px;color:var(--muted)">${esc(detail)}</td></tr>`;
   }).join('');
-  const foot = `<tr class="total-row"><td class="r">합계</td><td class="r">${comma(totalPaid)}</td><td class="c">${totalPaid/DUES}</td><td colspan="2"></td></tr>`;
+  const giftAll = totalGift + sum(giftNoName);
+  const foot = `<tr class="total-row"><td class="r">합계</td><td class="r">${comma(totalPaid)}</td>
+    <td class="r" style="color:var(--blue)">${comma(giftAll)}</td><td class="c">${totalPaid/DUES}</td>
+    <td colspan="2" style="font-size:12.5px">회비 ${comma(totalPaid)}원 + 빨랑카·후원금 ${comma(giftAll)}원 = <b>${comma(totalPaid+giftAll)}원</b></td></tr>`;
   let extra = '';
+  if(giftNoName.length){
+    const txt = giftNoName.map(r=>`${md(r)} ${comma(r.amt)}원 ${r.desc}`).join(', ');
+    extra += `<tr><td colspan="6" style="font-size:12px;color:var(--blue)">이름 없이 들어온 빨랑카·후원금 ${giftNoName.length}건(${comma(sum(giftNoName))}원, 합계에 포함): ${esc(txt)}</td></tr>`;
+  }
   if(ambiguous.length){
     const txt = ambiguous.map(a=>`${md(a.row)} ${comma(a.row.amt)}원 → ${a.who.join(' / ')}`).join(', ');
-    extra += `<tr><td colspan="5" style="font-size:12px;color:var(--bad);background:#FDF4F1">⚠ 이름이 겹쳐 배정하지 못한 입금 ${ambiguous.length}건: ${esc(txt)} — 회비 내역에서 내용을 구체적으로 고치면 반영됩니다.</td></tr>`;
+    extra += `<tr><td colspan="6" style="font-size:12px;color:var(--bad);background:#FDF4F1">⚠ 이름이 겹쳐 배정하지 못한 입금 ${ambiguous.length}건: ${esc(txt)} — 회비 내역에서 내용을 구체적으로 고치면 반영됩니다.</td></tr>`;
   }
   if(unmatched.length){
     const txt = unmatched.map(r=>`${md(r)} ${comma(r.amt)}원 ${r.desc}`).join(', ');
-    extra += `<tr><td colspan="5" style="font-size:12px;color:var(--muted)">이름이 확인되지 않은 5,000원 단위 입금 ${unmatched.length}건: ${esc(txt)}</td></tr>`;
+    extra += `<tr><td colspan="6" style="font-size:12px;color:var(--muted)">이름이 확인되지 않은 5,000원 단위 입금 ${unmatched.length}건: ${esc(txt)} — 탈단한 단원이면 단원관리의 '탈단 단원'에 등록하면 그 이름으로 집계됩니다.</td></tr>`;
   }
   el.innerHTML = head + body + foot + extra;
 }
@@ -1402,6 +1473,7 @@ function delMember(i){
   if(m) removeMemberEverywhere(m.name);
 }
 function renderMembers(){
+  renderLeft();
   const tb = document.getElementById('mb-body');
   document.getElementById('mb-count').textContent = S.members.length+'명';
   const nb = document.getElementById('mb-sort-name'), fb = document.getElementById('mb-sort-feast'), jb = document.getElementById('mb-sort-joined');
@@ -1435,7 +1507,84 @@ function renderMembers(){
   tb.innerHTML = order.map(i=>{
     const m = S.members[i];
     return `<tr>${cell(i,'name',m.name)}${cell(i,'bapt',m.bapt)}${cell(i,'feast',m.feast)}${cell(i,'phone',m.phone)}${cell(i,'duty',m.duty)}${cell(i,'joined',m.joined)}${cell(i,'addr',m.addr)}${cell(i,'note',m.note)}
-    <td class="c no-print"><button class="btn btn-sm btn-danger" onclick="delMember(${i})">✕</button></td></tr>`;
+    <td class="c no-print" style="white-space:nowrap"><button class="btn btn-sm" onclick="leaveMember(${i})" title="탈단 단원으로 옮기기 (기록 유지)">탈단</button>
+      <button class="btn btn-sm btn-danger" onclick="delMember(${i})" title="완전히 삭제 (출석 기록도 삭제)">✕</button></td></tr>`;
+  }).join('');
+}
+
+/* ── 탈단 단원 ──
+   탈단 = members·roster 에서 빼서 leftMembers 로 옮김. 출석 기록(attendance)은 지우지 않는다.
+   회비 표는 탈단 단원 이름으로도 입금을 맞춰서, 그만둔 사람의 지난 입금이 '이름 없음'으로 빠지지 않게 한다. */
+function leftOf(name){ return (S.leftMembers||[]).find(m=>m.name===name); }
+function leftYear(m){ const y = String(m && m.left || '').match(/(19|20)\d\d/); return y ? Number(y[0]) : null; }
+function leaveMember(i){
+  const m = S.members[i]; if(!m) return;
+  if(leftOf(m.name)){ alert('탈단 단원 목록에 같은 이름이 이미 있습니다: '+m.name+'\n탈단 단원 목록의 이름을 바꾸거나 지운 뒤 다시 해 주세요.'); return; }
+  const left = prompt(m.name+' 단원을 탈단 단원으로 옮깁니다.\n(출석부·회비 명단에서 빠지고, 지난 기록은 남습니다)\n\n탈단일 (예: 2025-12-31 또는 2025-12)', fmtDate(new Date()));
+  if(left === null) return;
+  const reason = prompt('탈단 사유 (선택, 비워 둬도 됩니다)', '');
+  if(reason === null) return;
+  S.leftMembers.push(Object.assign({}, m, { left:left.trim(), reason:reason.trim() }));
+  S.members.splice(i, 1);
+  S.roster = S.roster.filter(x=>x!==m.name);
+  persist(); renderMembers(); renderAttend(); renderDues(); renderFinFoot();
+}
+function restoreLeft(j){
+  const m = S.leftMembers[j]; if(!m) return;
+  if(S.members.some(o=>o.name===m.name)){ alert('명부에 같은 이름이 이미 있습니다: '+m.name); return; }
+  if(!confirm(m.name+' 단원을 명부로 복귀시킬까요?')) return;
+  const back = {}; ['name','bapt','feast','phone','duty','joined','addr','note'].forEach(k=>back[k] = m[k]||'');
+  S.members.push(back);
+  if(!S.roster.includes(m.name)) S.roster.push(m.name);
+  S.leftMembers.splice(j, 1);
+  persist(); renderMembers(); renderAttend(); renderDues(); renderFinFoot();
+}
+function delLeft(j){
+  const m = S.leftMembers[j]; if(!m) return;
+  if(!confirm(m.name+' 님을 탈단 단원 목록에서 지울까요?\n\n지난 출석 기록은 남지만, 회비 표에서 이 이름으로 입금을 맞추지 못하게 됩니다.')) return;
+  S.leftMembers.splice(j, 1);
+  persist(); renderMembers(); renderAttend(); renderDues(); renderFinFoot();
+}
+function updLeft(j, k, el){
+  const m = S.leftMembers[j]; if(!m) return;
+  const v = el.textContent.trim();
+  if(k !== 'name'){ m[k] = v; persist(); if(k==='left'){ renderDues(); renderAttend(); } return; }
+  if(v === m.name) return;
+  if(!v){ alert('이름은 비울 수 없습니다.'); el.textContent = m.name; return; }
+  if(S.leftMembers.some((o,x)=>x!==j && o.name===v) || S.members.some(o=>o.name===v)){
+    alert('이미 있는 이름입니다: '+v); el.textContent = m.name; return;
+  }
+  renameMemberEverywhere(m.name, v);   // 출석 기록 이름도 함께 옮긴다
+  m.name = v;
+  persist(); renderMembers(); renderAttend(); renderDues(); renderFinFoot();
+}
+function addLeftForm(){
+  const g = id => document.getElementById(id);
+  const name = g('lm-name').value.trim();
+  if(!name){ alert('이름을 입력하세요'); return; }
+  if(leftOf(name)){ alert('탈단 단원 목록에 이미 있는 이름입니다'); return; }
+  if(S.members.some(m=>m.name===name)){ alert(name+' 님은 지금 명부에 있습니다. 명부에서 그 줄의 [탈단] 버튼을 눌러 주세요.'); return; }
+  S.leftMembers.push({ name, bapt:g('lm-bapt').value.trim(), feast:'', phone:'', duty:'', joined:g('lm-joined').value.trim(),
+    addr:'', note:'', left:g('lm-left').value.trim(), reason:g('lm-reason').value.trim() });
+  S.roster = S.roster.filter(x=>x!==name);
+  ['lm-name','lm-bapt','lm-joined','lm-left','lm-reason'].forEach(id=>g(id).value='');
+  persist(); renderMembers(); renderAttend(); renderDues(); renderFinFoot();
+}
+function renderLeft(){
+  const tb = document.getElementById('lm-body'); if(!tb) return;
+  const L = S.leftMembers || [];
+  document.getElementById('lm-count').textContent = L.length+'명';
+  if(!L.length){ tb.innerHTML = '<tr><td colspan="11" class="empty">탈단 단원이 없습니다. 명부에서 [탈단]을 누르거나 위에서 직접 등록하세요.</td></tr>'; return; }
+  const cell = (j,k,v) => `<td contenteditable onblur="updLeft(${j},'${k}',this)">${esc(v)}</td>`;
+  const order = L.map((m,j)=>j).sort((a,b)=>{   // 최근 탈단 순, 같으면 이름순
+    const la = String(L[a].left||''), lb = String(L[b].left||'');
+    return la !== lb ? (la < lb ? 1 : -1) : String(L[a].name).localeCompare(String(L[b].name),'ko');
+  });
+  tb.innerHTML = order.map(j=>{
+    const m = L[j];
+    return `<tr>${cell(j,'name',m.name)}${cell(j,'bapt',m.bapt)}${cell(j,'feast',m.feast)}${cell(j,'phone',m.phone)}${cell(j,'duty',m.duty)}${cell(j,'joined',m.joined)}${cell(j,'left',m.left)}${cell(j,'reason',m.reason)}${cell(j,'addr',m.addr)}${cell(j,'note',m.note)}
+    <td class="c no-print" style="white-space:nowrap"><button class="btn btn-sm" onclick="restoreLeft(${j})">복귀</button>
+      <button class="btn btn-sm btn-danger" onclick="delLeft(${j})">✕</button></td></tr>`;
   }).join('');
 }
 function importMembersExcel(input){
@@ -1498,6 +1647,13 @@ function exportMembersExcel(){
   const ws = XLSX.utils.aoa_to_sheet(data);
   ws['!cols'] = [{wch:10},{wch:12},{wch:10},{wch:15},{wch:14},{wch:12},{wch:30},{wch:14}];
   XLSX.utils.book_append_sheet(wb, ws, '전례단원');
+  const L = S.leftMembers || [];
+  if(L.length){
+    const ws2 = XLSX.utils.aoa_to_sheet([['이름','세례명','축일','전화번호','담당','입단일','탈단일','탈단 사유','집주소','기타'],
+      ...L.map(m=>[m.name,m.bapt,m.feast,m.phone,m.duty,m.joined,m.left,m.reason,m.addr,m.note])]);
+    ws2['!cols'] = [{wch:10},{wch:12},{wch:10},{wch:15},{wch:14},{wch:12},{wch:12},{wch:20},{wch:30},{wch:14}];
+    XLSX.utils.book_append_sheet(wb, ws2, '탈단 단원');
+  }
   XLSX.writeFile(wb, '전례단원_명부.xlsx');
 }
 
@@ -1543,12 +1699,16 @@ async function fetchRoster(){
     const src = '깃허브 시간표 앱';
     if(!names.length) throw new Error('명단(members)을 찾지 못했습니다. 시간표 앱 구조가 바뀌었을 수 있습니다.');
     let added = 0;
+    const skipped = [];
     names.forEach(n=>{
+      if(leftOf(n)){ skipped.push(n); return; }   // 탈단 처리한 단원은 시간표 명단에 남아 있어도 다시 넣지 않는다
       if(!S.roster.includes(n)){ S.roster.push(n); added++; }
       if(!S.members.some(mm=>mm.name===n)) S.members.push({name:n,bapt:'',feast:'',phone:'',duty:'',joined:'',addr:'',note:''});
     });
     persist(); renderAttend(); renderMembers(); renderDues();
-    st.textContent = `✅ ${src}에서 ${names.length}명 확인, ${added}명 새로 추가`; st.style.color='var(--ok)';
+    st.textContent = `✅ ${src}에서 ${names.length}명 확인, ${added}명 새로 추가`
+      + (skipped.length ? ` (탈단 단원 ${skipped.join(', ')}은 제외)` : '');
+    st.style.color='var(--ok)';
   }catch(e){
     st.textContent = '❌ '+e.message; st.style.color='var(--bad)';
   }
@@ -1557,6 +1717,10 @@ function addRosterName(){
   const el = document.getElementById('att-newname');
   const n = el.value.trim(); if(!n) return;
   if(S.roster.includes(n)){ alert('이미 있는 이름입니다'); return; }
+  if(leftOf(n)){
+    alert(n+' 님은 탈단 단원 목록에 있습니다. 단원관리 탭의 탈단 단원 목록에서 [복귀]를 눌러 주세요.');
+    return;
+  }
   S.roster.push(n);
   if(!S.members.some(m=>m.name===n)) S.members.push({name:n,bapt:'',feast:'',phone:'',duty:'',joined:'',addr:'',note:''});
   el.value=''; persist(); renderAttend(); renderMembers(); renderDues();
@@ -1697,7 +1861,7 @@ function renderAttStats(){
       return attPctCell(s.cnt, s.recorded);
     }).join('');
     const total = attPctCell(tc, tr).replace('<td class="c"', '<td class="c att-sum"');
-    const gone = S.roster.includes(n) ? '' : ' <span style="font-size:11px;color:var(--muted)">(명단 없음)</span>';
+    const gone = S.roster.includes(n) ? '' : ` <span style="font-size:11px;color:var(--muted)">(${leftOf(n) ? '탈단' : '명단 없음'})</span>`;
     return `<tr><td class="att-name">${esc(n)}${gone}</td>${cells}${total}</tr>`;
   }).join('');
   tm.innerHTML = mh + mb;
@@ -1723,7 +1887,10 @@ function renderAttend(){
       <span class="att-date-print">${esc(dv)}</span></th>`;
   });
   head += '<th class="c att-sum">출석률</th><th class="c no-print" style="width:50px">삭제</th></tr>';
-  const sortedNames = attSortedNames();
+  // 탈단 단원 중 이 해에 출석 기록이 있는 사람은 맨 아래에 '(탈단)'으로 붙인다 (기록 보존용, 순서 변경·삭제 없음).
+  const leftRows = (S.leftMembers||[]).map(m=>m.name)
+    .filter(n=>n && !S.roster.includes(n) && A[n] && Object.values(A[n]).some(v=>v==='O'||v==='X'));
+  const sortedNames = attSortedNames().concat(leftRows);
   const draggable = attSortMode==='custom';
   const dragHint = document.getElementById('att-drag-hint');
   if(dragHint) dragHint.style.display = draggable ? 'inline' : 'none';
@@ -1750,18 +1917,21 @@ function renderAttend(){
       : `${cnt}`;
     // 이름은 data 속성으로만 넘긴다. 인라인 onclick 문자열에 넣으면 따옴표가 든
     // 이름에서 핸들러가 깨지고(HTML 이스케이프로도 막히지 않는다) 주입 통로가 된다.
-    const dragAttrs = draggable ? ` draggable="true" style="cursor:grab"` : '';
-    return `<tr data-name="${esc(name)}"><td class="att-name"${dragAttrs}>${draggable?'⠿ ':''}${esc(name)}${bapt?` <span style="font-size:11.5px;color:var(--muted)">${esc(bapt)}</span>`:''}</td>${cells}<td class="c att-sum">${sumTxt}</td>
-      <td class="c no-print"><button class="btn btn-sm btn-danger" data-act="del">✕</button></td></tr>`;
+    const isLeft = !S.roster.includes(name);
+    const drag = draggable && !isLeft;
+    const dragAttrs = drag ? ` draggable="true" style="cursor:grab"` : '';
+    const lb = isLeft ? (leftOf(name)||{}).bapt || '' : bapt;
+    return `<tr data-name="${esc(name)}"${isLeft?' style="background:#F6F3EE"':''}><td class="att-name"${dragAttrs}>${drag?'⠿ ':''}${esc(name)}${lb?` <span style="font-size:11.5px;color:var(--muted)">${esc(lb)}</span>`:''}${isLeft?' <span style="font-size:11px;color:var(--muted)">(탈단)</span>':''}</td>${cells}<td class="c att-sum">${sumTxt}</td>
+      <td class="c no-print">${isLeft ? '' : '<button class="btn btn-sm btn-danger" data-act="del">✕</button>'}</td></tr>`;
   }).join('');
   // 월별 출석 합계
   let sums = '<tr class="total-row"><td class="r">월별 합계</td>';
   for(let m=1;m<=12;m++){
-    const c = S.roster.reduce((a,n)=>a+((A[n]?.[m]==='O')?1:0),0);
+    const c = sortedNames.reduce((a,n)=>a+((A[n]?.[m]==='O')?1:0),0);
     sums += `<td class="c">${c||''}</td>`;
   }
   EVENTS.forEach(ev=>{
-    const c = S.roster.reduce((a,n)=>a+((A[n]?.[ev.key]==='O')?1:0),0);
+    const c = sortedNames.reduce((a,n)=>a+((A[n]?.[ev.key]==='O')?1:0),0);
     sums += `<td class="c">${c||''}</td>`;
   });
   sums += '<td></td><td class="no-print"></td></tr>';
@@ -2620,7 +2790,7 @@ function clearLocalData(){
   cloudLoaded = false;
   savedSeq = editSeq;
   try{ localStorage.removeItem(LS_KEY); }catch(e){}
-  S = { meetings:{}, suggestions:[], finance:{}, members:[], attendance:{}, roster:[], eventDates:{}, groups:{}, events:{}, evDel:{}, gcal:{} };
+  S = { meetings:{}, suggestions:[], finance:{}, members:[], leftMembers:[], attendance:{}, roster:[], eventDates:{}, groups:{}, events:{}, evDel:{}, gcal:{} };
   finYM = ymNow();
   renderAll();
 }
@@ -2674,6 +2844,7 @@ async function cloudLoad(){
       });
       // Firebase는 빈 배열/객체를 저장하지 않으므로 기본형 보정
       S.suggestions = S.suggestions||[]; S.members = S.members||[]; S.roster = S.roster||[];
+      S.leftMembers = loaded.leftMembers || [];   // 다른 기기에서 다 지웠으면(빈 배열은 저장 안 됨) 비워야 맞다
       S.meetings = S.meetings||{}; S.finance = S.finance||{}; S.attendance = S.attendance||{};
       S.eventDates = S.eventDates||{};
       calEnsure();
