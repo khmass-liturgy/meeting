@@ -51,6 +51,10 @@ input,select,textarea{font-family:inherit;font-size:14px;padding:8px 10px;border
 input:focus,select:focus,textarea:focus{outline:2px solid var(--gold-l)}
 textarea{width:100%;min-height:110px;line-height:1.65;resize:vertical}
 /* 회의록 입력칸: 화면 높이의 약 60%로 넓게 (길게 쓰면 스크롤, 아래 모서리를 끌어 더 키울 수도 있음) */
+/* 수입·지출 항목별 정리표 (월회비 납부 현황 아래) */
+.dues-cats th,.dues-cats td{font-size:12.5px;white-space:nowrap;padding:5px 7px}
+.dues-cats td[title]{cursor:help}
+
 /* 서식 편집기 (굵게·색깔 등) */
 .rte-wrap{border:1px solid var(--line);border-radius:8px;background:#fff}
 .rte-bar{display:flex;flex-wrap:wrap;gap:3px;align-items:center;padding:5px 6px;border-bottom:1px solid var(--line);background:#faf6ef;border-radius:8px 8px 0 0}
@@ -308,7 +312,7 @@ td input{width:100%;border:none;padding:2px;background:transparent}
   <div class="card no-print">
     <h2>📤 엑셀 업로드</h2>
     <div class="row">
-      <input type="file" id="fin-file" accept=".xlsx,.xls" onchange="importFinanceExcel(this)">
+      <input type="file" id="fin-file" accept=".xlsx,.xls" onchange="importFinanceExcel(this)" style="max-width:100%">
       <button class="btn" onclick="downloadFinanceTemplate()">📄 양식 다운로드</button>
       <span class="status" id="fin-status"></span>
     </div>
@@ -327,7 +331,7 @@ td input{width:100%;border:none;padding:2px;background:transparent}
       <button class="btn btn-p" onclick="exportFinanceExcel()">엑셀 저장</button>
       <span class="status" id="finx-status"></span>
     </div>
-    <p class="hint">고른 기간의 회비 내역을 엑셀 파일 하나로 저장합니다. 시트는 세 개입니다: <b>회비 내역</b>(날짜순, 월별 소계·잔액), <b>월별 요약</b>(이월금·회비·빨랑카·후원금·기타 수입·지출·잔액), <b>단원별 합계</b>(단원마다 회비·빨랑카·후원금, 탈단 단원 포함).</p>
+    <p class="hint">고른 기간의 회비 내역을 엑셀 파일 하나로 저장합니다. 시트는 네 개입니다: <b>회비 내역</b>(날짜순, 월별 소계·잔액), <b>월별 요약</b>(이월금·회비·빨랑카·후원금·기타 수입·지출·잔액), <b>지출 항목별</b>(매일미사·생미사·간식·커피·식사·경조사 등 월별), <b>단원별 합계</b>(단원마다 회비·빨랑카·후원금, 탈단 단원 포함).</p>
   </div>
   <div class="card">
     <div class="row" style="justify-content:space-between">
@@ -362,6 +366,7 @@ td input{width:100%;border:none;padding:2px;background:transparent}
     <div style="overflow-x:auto;margin-top:10px">
     <table id="dues-table"></table>
     </div>
+    <div id="dues-cats"></div>
     <p class="hint">입금 내역의 <b>내용에 단원 이름이 포함된 5,000원 단위 입금</b>(건당 60,000원 이하)을 회비로 자동 집계합니다. 내용에 <b>빨랑카·후원·찬조·기부·헌금</b> 등이 들어 있거나, 단원 이름이 있지만 5,000원 단위가 아닌 입금은 <b>빨랑카·후원금</b> 칸에 따로 모읍니다. 탈단 단원의 지난 입금도 그 이름으로 집계됩니다. 잘못 집계된 건은 회비 내역에서 내용을 수정하면 반영됩니다.</p>
   </div>
 </section>
@@ -1338,6 +1343,8 @@ function exportFinanceExcel(){
   // ① 회비 내역 + ② 월별 요약
   const detail = [['날짜','구분','분류','내용','수입','지출','잔액']];
   const sumRows = [['월','이월금','회비','빨랑카·후원금','기타 수입','수입 합계','지출 합계','잔액']];
+  const EXP_KEYS = EXP_CATS.map(c=>c[0]).concat(EXP_ETC[0]);
+  const expRows = [['월', ...EXP_CATS.map(c=>c[1]), EXP_ETC[1], '지출 합계']];
   const tot = { dues:0, gift:0, etc:0, inc:0, out:0 };
   const byName = {};   // 이름 → {dues, gift}
   const loose = { dues:0, gift:0, duesN:0, giftN:0 };
@@ -1351,7 +1358,11 @@ function exportFinanceExcel(){
     rows.forEach(r=>{
       const amt = Number(r.amt||0);
       let kind = '';
-      if(r.type==='지출'){ bal -= amt; part.out += amt; }
+      if(r.type==='지출'){
+        bal -= amt; part.out += amt;
+        const [ck, cl] = expCat(r.desc); kind = cl;
+        part['x_'+ck] = (part['x_'+ck]||0) + amt;
+      }
       else {
         bal += amt; part.inc += amt;
         if(amt > 0){
@@ -1367,7 +1378,8 @@ function exportFinanceExcel(){
     });
     if(rows.length) detail.push(['', '', '', `${label(ym)} 소계`, part.inc, part.out, bal]);
     sumRows.push([label(ym), carry, part.dues, part.gift, part.etc, part.inc, part.out, bal]);
-    Object.keys(part).forEach(k=>tot[k] += part[k]);
+    expRows.push([label(ym), ...EXP_KEYS.map(k=>part['x_'+k]||0), part.out]);
+    Object.keys(part).forEach(k=>tot[k] = (tot[k]||0) + part[k]);
     lastBal = bal;
   });
   if(!nRows && !confirm(from+' ~ '+to+' 기간에 회비 내역이 없습니다. 빈 파일이라도 저장할까요?')) return;
@@ -1376,6 +1388,7 @@ function exportFinanceExcel(){
   detail.push(['', '', '', '기간 지출 합계', '', tot.out, '']);
   detail.push(['', '', '', '기간 말 잔액', '', '', lastBal]);
   sumRows.push(['합계', carryOf(from), tot.dues, tot.gift, tot.etc, tot.inc, tot.out, lastBal]);
+  expRows.push(['합계', ...EXP_KEYS.map(k=>tot['x_'+k]||0), tot.out]);
 
   // ③ 단원별 합계 (지금 단원 → 탈단 단원 순, 입금이 있는 사람만)
   const NS = duesNameSets();
@@ -1403,6 +1416,7 @@ function exportFinanceExcel(){
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, sheet(detail, [12,7,13,36,12,12,13], 4), '회비 내역');
   XLSX.utils.book_append_sheet(wb, sheet(sumRows, [12,12,12,14,11,12,12,13], 1), '월별 요약');
+  XLSX.utils.book_append_sheet(wb, sheet(expRows, [12, ...EXP_KEYS.map(()=>13), 12], 1), '지출 항목별');
   XLSX.utils.book_append_sheet(wb, sheet(per, [24,10,12,14,12], 2), '단원별 합계');
   const fname = from===to ? `전례단_회비_${from}.xlsx` : `전례단_회비_${from}_${to}.xlsx`;
   XLSX.writeFile(wb, fname);
@@ -1444,6 +1458,76 @@ function makeIncomeClassifier(names){
     else kind = who.length ? 'gift' : 'etc';
     return { kind, who };
   };
+}
+/* 지출 항목 분류 — 내용(띄어쓰기 무시)에 열쇠말이 있으면 그 항목. 위에서부터 먼저 맞는 것 하나만.
+   (예: "9월축일생봉"은 축일보다 생미사가 앞이라 생미사로 간다) */
+const EXP_CATS = [
+  ['mass',   '매일미사',        /매일미사|매미/],
+  ['live',   '생미사·연미사',    /생미사|생봉|연미사/],
+  ['snack',  '간식',            /간식/],
+  ['coffee', '커피·음료',        /커피|음료|카페/],
+  ['meal',   '식사·회식',        /식사|회식|뒷풀이|저녁|점심/],
+  ['cond',   '경조사',          /부의|문상|선종|부친상|모친상|시부상|시모상|빙모|빙부|장례|결혼|축의/],
+  ['gift',   '축일·봉헌·후원',   /축일|축하|전별|봉헌|선물|상품권|답례|후원/]
+];
+const EXP_ETC = ['etc', '기타 지출'];
+function expCat(desc){
+  const d = String(desc==null?'':desc).replace(/\s+/g,'');
+  const c = EXP_CATS.find(c=>c[2].test(d));
+  return c ? [c[0], c[1]] : EXP_ETC;
+}
+/* 한 해의 수입·지출을 항목 × 월로 정리한 표 (월회비 납부 현황 아래) */
+function renderDuesCats(classify){
+  const box = document.getElementById('dues-cats'); if(!box) return;
+  const Y = String(duesY);
+  const rowsIn = { dues:'회비', gift:'빨랑카·후원금', etc:'기타 수입' };
+  const cells = {};   // key → [13] (1~12월, 0은 안 씀) {sum, items}
+  const put = (key, m, r) => {
+    const a = cells[key] = cells[key] || Array.from({length:13}, ()=>({sum:0, items:[]}));
+    a[m].sum += Number(r.amt||0); a[m].items.push(r);
+  };
+  let any = false;
+  for(let m=1; m<=12; m++){
+    ((S.finance[Y+'-'+String(m).padStart(2,'0')]||{}).rows||[]).forEach(r=>{
+      if(!(Number(r.amt)>0)) return;
+      any = true;
+      if(r.type==='지출'){ put('x_'+expCat(r.desc)[0], m, r); put('x_total', m, r); }
+      else { put('i_'+classify(r).kind, m, r); put('i_total', m, r); }
+    });
+  }
+  if(!any){ box.innerHTML = ''; return; }
+  const md = r => String(r.date||'').slice(5);
+  const row = (key, label, opt={}) => {
+    const a = cells[key];
+    if(!a && !opt.always) return '';
+    let tot = 0, tds = '';
+    for(let m=1; m<=12; m++){
+      const c = a ? a[m] : {sum:0, items:[]};
+      tot += c.sum;
+      const tip = c.items.map(r=>`${md(r)} ${r.desc||''} ${comma(r.amt)}원`).join('\n');
+      tds += `<td class="r"${tip?` title="${esc(tip)}"`:''}>${c.sum?comma(c.sum):''}</td>`;
+    }
+    return `<tr${opt.cls?` class="${opt.cls}"`:''}><td class="att-name"${opt.style?` style="${opt.style}"`:''}>${label}</td>${tds}<td class="r" style="font-weight:700">${tot?comma(tot):''}</td></tr>`;
+  };
+  let head = '<tr><th class="att-name">항목</th>'; for(let m=1;m<=12;m++) head += `<th class="r">${m}월</th>`; head += '<th class="r">합계</th></tr>';
+  const sec = t => `<tr><td colspan="14" style="background:#F3EBDD;font-weight:700;color:var(--wine);font-size:13px">${t}</td></tr>`;
+  let bal = '<tr><td class="att-name" style="color:var(--wine)">월말 잔액</td>';
+  for(let m=1; m<=12; m++){
+    const ym = Y+'-'+String(m).padStart(2,'0');
+    bal += `<td class="r" style="color:var(--wine)">${S.finance[ym] ? comma(balanceOf(ym)) : ''}</td>`;
+  }
+  bal += '<td></td></tr>';
+  box.innerHTML = `<h3 style="font-size:15px;color:var(--wine);margin:18px 0 6px">📋 ${duesY}년 수입·지출 항목별 정리</h3>
+    <div style="overflow-x:auto"><table class="dues-cats">${head}
+      ${sec('수입')}
+      ${Object.keys(rowsIn).map(k=>row('i_'+k, rowsIn[k])).join('')}
+      ${row('i_total', '수입 합계', {cls:'total-row', always:true})}
+      ${sec('지출 (생미사·매일미사·식사·커피 등)')}
+      ${EXP_CATS.map(c=>row('x_'+c[0], c[1])).join('')}${row('x_'+EXP_ETC[0], EXP_ETC[1])}
+      ${row('x_total', '지출 합계', {cls:'total-row', always:true})}
+      ${bal}
+    </table></div>
+    <p class="hint">지출은 내역의 내용에 있는 말로 나눕니다: 매일미사(매일미사·매미), 생미사·연미사(생미사·생봉·연미사), 간식, 커피·음료, 식사·회식(식사·회식·뒷풀이), 경조사(부의·문상·선종·결혼 등), 축일·봉헌·후원(축일·축하·봉헌·선물·상품권·후원). 어디에도 안 맞으면 기타 지출입니다. 금액 칸에 마우스를 올리면(휴대폰은 길게 누르면) 어떤 내역인지 보입니다.</p>`;
 }
 function renderDues(){
   const el = document.getElementById('dues-table'); if(!el) return;
@@ -1512,6 +1596,7 @@ function renderDues(){
     extra += `<tr><td colspan="6" style="font-size:12px;color:var(--muted)">이름이 확인되지 않은 5,000원 단위 입금 ${unmatched.length}건: ${esc(txt)} — 탈단한 단원이면 단원관리의 '탈단 단원'에 등록하면 그 이름으로 집계됩니다.</td></tr>`;
   }
   el.innerHTML = head + body + foot + extra;
+  renderDuesCats(classify);
 }
 
 
